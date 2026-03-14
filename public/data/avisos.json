@@ -1,0 +1,9 @@
+{
+  "calendario_provisional": false,
+  "mensaje_provisional": {
+    "es": "⚠️ Este calendario es PROVISIONAL. Los datos pueden cambiar cuando iRacing publique el calendario oficial.",
+    "en": "⚠️ This schedule is PROVISIONAL. Data may change when iRacing releases the official schedule."
+  },
+  "avisos": [
+  ]
+}
