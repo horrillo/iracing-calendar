@@ -567,28 +567,70 @@
 
         .week-row {
             display: grid;
-            grid-template-columns: 40px 1fr auto 50px 60px;
+            grid-template-columns: 55px 1fr auto 50px 60px;
             gap: 0.5rem;
             padding: 0.5rem 0.6rem;
             background: var(--bg-primary);
             border-radius: 6px;
             margin-bottom: 0.3rem;
             align-items: center;
-            transition: background 0.2s ease;
+            transition: all 0.2s ease;
         }
 
         .week-row:hover {
             background: var(--bg-hover);
         }
 
+        /* Semana actual resaltada */
+        .week-row.current-week {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.1));
+            border: 1px solid var(--purple-primary);
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+        }
+
+        .current-badge {
+            display: inline-block;
+            margin-left: 0.3rem;
+            padding: 0.1rem 0.3rem;
+            background: var(--purple-primary);
+            border-radius: 3px;
+            font-size: 0.55rem;
+            font-weight: 700;
+            vertical-align: middle;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
         .week-num {
             font-family: 'Bebas Neue', sans-serif;
             font-size: 0.9rem;
             color: var(--purple-light);
+            display: flex;
+            align-items: center;
+            gap: 0.2rem;
+        }
+
+        .week-track-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+            overflow: hidden;
         }
 
         .week-track {
             font-size: 0.8rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .track-info {
+            font-size: 0.7rem;
+            color: var(--text-muted);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
