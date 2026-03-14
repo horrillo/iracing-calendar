@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - iRacing Calendar by Horrillo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0a0b;
+            --bg-secondary: #111113;
+            --bg-card: #16161a;
+            --purple-primary: #8B5CF6;
+            --purple-light: #A78BFA;
+            --purple-glow: rgba(139, 92, 246, 0.4);
+            --text-primary: #FFFFFF;
+            --text-secondary: #A1A1AA;
+            --text-muted: #71717A;
+            --border-color: rgba(255,255,255,0.08);
+            --success: #22C55E;
+            --danger: #EF4444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Barlow', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2rem;
+            color: var(--purple-light);
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card h2 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--purple-light);
+        }
+
+        .upload-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--purple-primary);
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        .upload-zone input {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .upload-text {
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-hint {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--purple-primary);
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: var(--purple-primary);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: var(--purple-light);
+            box-shadow: 0 5px 20px var(--purple-glow);
+        }
+
+        .btn:disabled {
+            background: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .btn-success {
+            background: var(--success);
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 1.5rem;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--purple-primary);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .output-area {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            display: none;
+        }
+
+        .download-section {
+            margin-top: 1.5rem;
+            padding: 1.5rem;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid var(--success);
+            border-radius: 8px;
+            display: none;
+        }
+
+        .download-section h3 {
+            color: var(--success);
+            margin-bottom: 1rem;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat {
+            background: var(--bg-primary);
+            padding: 1rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2rem;
+            color: var(--purple-light);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .instructions {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .instructions h3 {
+            margin-bottom: 1rem;
+            color: var(--purple-light);
+        }
+
+        .instructions ol {
+            padding-left: 1.5rem;
+            color: var(--text-secondary);
+        }
+
+        .instructions li {
+            margin-bottom: 0.75rem;
+        }
+
+        .instructions code {
+            background: var(--bg-primary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚙️ Panel de Administración</h1>
+            <p>Sube el PDF de iRacing para generar el calendario</p>
+        </div>
+
+        <div class="card">
+            <h2>📄 Subir PDF del Calendario</h2>
+            
+            <div class="upload-zone" id="uploadZone">
+                <input type="file" id="pdfInput" accept=".pdf">
+                <div class="upload-icon">📁</div>
+                <p class="upload-text">Arrastra el PDF aquí o haz clic para seleccionar</p>
+                <p class="upload-hint">Solo archivos PDF del calendario oficial de iRacing</p>
+            </div>
+
+            <div class="form-group" style="margin-top: 1.5rem;">
+                <label for="seasonName">Nombre de la temporada</label>
+                <input type="text" id="seasonName" placeholder="Ej: Season 2 • 2026" value="Season 2 • 2026">
+            </div>
+
+            <button class="btn" id="processBtn" disabled>🚀 Procesar PDF</button>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p class="progress-text" id="progressText">Procesando...</p>
+            </div>
+
+            <div class="output-area" id="outputArea"></div>
+
+            <div class="download-section" id="downloadSection">
+                <h3>✅ ¡Calendario generado con éxito!</h3>
+                <div class="stats" id="statsContainer"></div>
+                <button class="btn btn-success" id="downloadBtn">📥 Descargar calendar.json</button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>📋 Instrucciones</h3>
+            <ol>
+                <li>Descarga el PDF del calendario desde la web oficial de iRacing</li>
+                <li>Súbelo aquí usando el área de arriba</li>
+                <li>Haz clic en "Procesar PDF"</li>
+                <li>Descarga el archivo <code>calendar.json</code> generado</li>
+                <li>Sube el archivo a la carpeta <code>/public/data/</code> de tu proyecto en Vercel</li>
+                <li>¡La web se actualizará automáticamente!</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let pdfFile = null;
+        let generatedJson = null;
+
+        // Elements
+        const uploadZone = document.getElementById('uploadZone');
+        const pdfInput = document.getElementById('pdfInput');
+        const processBtn = document.getElementById('processBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const outputArea = document.getElementById('outputArea');
+        const downloadSection = document.getElementById('downloadSection');
+        const statsContainer = document.getElementById('statsContainer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const seasonName = document.getElementById('seasonName');
+
+        // Upload zone events
+        uploadZone.addEventListener('click', () => pdfInput.click());
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                handleFile(file);
+            }
+        });
+
+        pdfInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFile(file);
+        });
+
+        function handleFile(file) {
+            pdfFile = file;
+            uploadZone.querySelector('.upload-text').textContent = `📄 ${file.name}`;
+            processBtn.disabled = false;
+        }
+
+        // Process PDF
+        processBtn.addEventListener('click', async () => {
+            if (!pdfFile) return;
+
+            processBtn.disabled = true;
+            progressContainer.style.display = 'block';
+            outputArea.style.display = 'block';
+            downloadSection.style.display = 'none';
+            outputArea.textContent = '';
+
+            try {
+                const arrayBuffer = await pdfFile.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                
+                log(`📄 PDF cargado: ${pdf.numPages} páginas`);
+                
+                let allText = '';
+                
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    allText += pageText + '\n';
+                    
+                    updateProgress((i / pdf.numPages) * 50, `Extrayendo página ${i}/${pdf.numPages}`);
+                }
+
+                log('✅ Texto extraído, procesando series...');
+                updateProgress(60, 'Analizando series...');
+
+                const calendarData = parseCalendarText(allText);
+                
+                updateProgress(100, '¡Completado!');
+                
+                generatedJson = {
+                    meta: {
+                        season: seasonName.value,
+                        generatedAt: new Date().toISOString(),
+                        totalSeries: countSeries(calendarData.series)
+                    },
+                    series: calendarData.series,
+                    specialEvents: calendarData.specialEvents
+                };
+
+                showResults(generatedJson);
+
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+                console.error(error);
+            }
+
+            processBtn.disabled = false;
+        });
+
+        function parseCalendarText(text) {
+            const series = {
+                'OVAL': { R: [], D: [], C: [], B: [], A: [] },
+                'SPORTS CAR': { R: [], D: [], C: [], B: [], A: [] },
+                'FORMULA CAR': { R: [], D: [], C: [], B: [], A: [] },
+                'DIRT OVAL': { R: [], D: [], C: [], B: [], A: [] },
+                'DIRT ROAD': { R: [], D: [], C: [], B: [], A: [] },
+                'UNRANKED': { R: [] }
+            };
+            const specialEvents = [];
+
+            let currentCategory = 'OVAL';
+            let currentLicense = 'R';
+            let currentSeries = null;
+
+            const lines = text.split(/\n|\s{3,}/);
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+
+                // Detect category
+                for (const cat of ['DIRT ROAD', 'DIRT OVAL', 'FORMULA CAR', 'SPORTS CAR', 'OVAL', 'UNRANKED']) {
+                    if (trimmed === cat) {
+                        currentCategory = cat;
+                        break;
+                    }
+                }
+
+                // Detect license
+                const licenseMatch = trimmed.match(/^([RDCBA]) Class Series/);
+                if (licenseMatch) {
+                    currentLicense = licenseMatch[1];
+                    continue;
+                }
+
+                // Detect special event
+                if (trimmed.includes('12 Hours of Sebring') && !trimmed.includes('Week')) {
+                    specialEvents.push({
+                        name: '2026 12 Hours of Sebring Presented by VCO',
+                        date: '27-28 de Marzo 2026',
+                        times: '22:00 GMT | 07:00 GMT | 12:00 GMT | 16:00 GMT',
+                        track: 'Sebring International Raceway',
+                        license: 'Clase D (4.0)',
+                        type: 'Team Racing'
+                    });
+                    continue;
+                }
+
+                // Detect series name
+                if (trimmed.includes('2026 Season') && !trimmed.includes('Week')) {
+                    if (currentSeries && currentSeries.weeks.length >= 6) {
+                        if (series[currentCategory] && series[currentCategory][currentLicense]) {
+                            series[currentCategory][currentLicense].push(currentSeries);
+                        }
+                    }
+
+                    const name = trimmed.replace(/\s*-\s*2026\s+Season.*$/, '').trim();
+                    const isFixed = /fixed/i.test(trimmed);
+
+                    currentSeries = {
+                        name: name,
+                        fixed: isFixed,
+                        weeks: []
+                    };
+                    continue;
+                }
+
+                // Detect week
+                const weekMatch = trimmed.match(/Week\s+(\d+)\s+\((\d{4}-\d{2}-\d{2})\)\s+(.+?)\s+(\d+)°F\/(\d+)°C,\s*Rain\s+chance\s+(\d+%|None)/);
+                if (weekMatch && currentSeries) {
+                    currentSeries.weeks.push({
+                        week: parseInt(weekMatch[1]),
+                        date: weekMatch[2],
+                        track: weekMatch[3].trim(),
+                        temp_c: parseInt(weekMatch[5]),
+                        rain: weekMatch[6]
+                    });
+                }
+            }
+
+            // Save last series
+            if (currentSeries && currentSeries.weeks.length >= 6) {
+                if (series[currentCategory] && series[currentCategory][currentLicense]) {
+                    series[currentCategory][currentLicense].push(currentSeries);
+                }
+            }
+
+            return { series, specialEvents };
+        }
+
+        function countSeries(seriesData) {
+            let count = 0;
+            for (const cat of Object.values(seriesData)) {
+                for (const lic of Object.values(cat)) {
+                    count += lic.length;
+                }
+            }
+            return count;
+        }
+
+        function showResults(data) {
+            downloadSection.style.display = 'block';
+            
+            const totalSeries = data.meta.totalSeries;
+            let weeksWithRain = 0;
+            
+            for (const cat of Object.values(data.series)) {
+                for (const lic of Object.values(cat)) {
+                    for (const series of lic) {
+                        for (const week of series.weeks) {
+                            if (week.rain !== 'None') weeksWithRain++;
+                        }
+                    }
+                }
+            }
+
+            statsContainer.innerHTML = `
+                <div class="stat">
+                    <div class="stat-value">${totalSeries}</div>
+                    <div class="stat-label">Series</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">${data.specialEvents.length}</div>
+                    <div class="stat-label">Eventos Especiales</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">${weeksWithRain}</div>
+                    <div class="stat-label">Semanas con Lluvia</div>
+                </div>
+            `;
+
+            log(`\n✅ Procesamiento completado!`);
+            log(`   📊 Series: ${totalSeries}`);
+            log(`   🏅 Eventos especiales: ${data.specialEvents.length}`);
+            log(`   🌧️ Semanas con lluvia: ${weeksWithRain}`);
+        }
+
+        // Download JSON
+        downloadBtn.addEventListener('click', () => {
+            if (!generatedJson) return;
+
+            const blob = new Blob([JSON.stringify(generatedJson, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'calendar.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        function updateProgress(percent, text) {
+            progressFill.style.width = `${percent}%`;
+            progressText.textContent = text;
+        }
+
+        function log(message) {
+            outputArea.textContent += message + '\n';
+            outputArea.scrollTop = outputArea.scrollHeight;
+        }
+    </script>
+</body>
+</html>
