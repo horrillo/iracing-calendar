@@ -427,7 +427,7 @@
         ============================================ */
         .series-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
             gap: 1rem;
         }
 
@@ -442,6 +442,11 @@
         .series-card:hover {
             border-color: var(--border-hover);
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .series-card.expanded {
+            border-color: var(--purple-primary);
+            box-shadow: 0 10px 40px rgba(139, 92, 246, 0.2);
         }
 
         .series-header {
@@ -491,6 +496,45 @@
         }
 
         /* ============================================
+           SERIES INFO (NEW)
+        ============================================ */
+        .series-info {
+            padding: 0.75rem 1rem;
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        .info-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.35rem 0;
+            font-size: 0.8rem;
+        }
+
+        .info-icon {
+            flex-shrink: 0;
+            width: 20px;
+            text-align: center;
+        }
+
+        .info-label {
+            flex-shrink: 0;
+            color: var(--text-muted);
+            min-width: 70px;
+        }
+
+        .info-value {
+            color: var(--text-primary);
+            word-break: break-word;
+        }
+
+        .weeks-divider {
+            height: 1px;
+            background: var(--border-color);
+            margin: 0;
+        }
+
+        /* ============================================
            WEEKS LIST
         ============================================ */
         .weeks-container {
@@ -500,7 +544,7 @@
         }
 
         .series-card.expanded .weeks-container {
-            max-height: 700px;
+            max-height: 800px;
             overflow-y: auto;
         }
 
@@ -523,7 +567,7 @@
 
         .week-row {
             display: grid;
-            grid-template-columns: 42px 1fr 55px 65px;
+            grid-template-columns: 40px 1fr auto 50px 60px;
             gap: 0.5rem;
             padding: 0.5rem 0.6rem;
             background: var(--bg-primary);
@@ -548,6 +592,26 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .week-details {
+            display: flex;
+            gap: 0.5rem;
+            font-size: 0.7rem;
+        }
+
+        .week-duration {
+            padding: 0.15rem 0.4rem;
+            background: var(--bg-card);
+            border-radius: 3px;
+            color: var(--text-muted);
+        }
+
+        .week-start-type {
+            padding: 0.15rem 0.4rem;
+            background: rgba(139, 92, 246, 0.2);
+            border-radius: 3px;
+            color: var(--purple-light);
         }
 
         .week-temp {
@@ -755,6 +819,12 @@
         /* ============================================
            RESPONSIVE
         ============================================ */
+        @media (max-width: 900px) {
+            .series-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         @media (max-width: 768px) {
             .header-content {
                 flex-direction: column;
@@ -774,13 +844,13 @@
                 font-size: 1.5rem;
             }
 
-            .series-grid {
-                grid-template-columns: 1fr;
+            .week-row {
+                grid-template-columns: 35px 1fr 45px 50px;
+                font-size: 0.75rem;
             }
 
-            .week-row {
-                grid-template-columns: 38px 1fr 50px 55px;
-                font-size: 0.75rem;
+            .week-details {
+                display: none;
             }
 
             .footer-social {
@@ -863,6 +933,8 @@
             <div class="legend-item"><span class="rain-low">●</span> &lt;30%</div>
             <div class="legend-item"><span class="rain-med">●</span> 30-49%</div>
             <div class="legend-item"><span class="rain-high">●</span> ≥50%</div>
+            <div class="legend-item"><span style="color: var(--purple-light);">Standing</span> Salida parada</div>
+            <div class="legend-item"><span style="color: var(--purple-light);">Rolling</span> Salida lanzada</div>
         </div>
     </div>
 

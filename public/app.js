@@ -1,6 +1,6 @@
 // ============================================
 // iRacing Calendar App by Horrillo
-// Con sistema de avisos
+// v3 - Con info completa y expansión única
 // ============================================
 
 const LICENSE_NAMES = {
@@ -188,7 +188,7 @@ function renderCategory(categoryId) {
                     <div class="license-badge ${license}">${license}</div>
                     <span class="license-title">${LICENSE_NAMES[license]}</span>
                     <span class="license-count">${seriesList.length} series</span>
-                    <button class="expand-btn" onclick="toggleAllInSection(this)">Expandir</button>
+                    <button class="expand-btn" onclick="toggleAllInSection(this)">Expandir todo</button>
                 </div>
                 <div class="series-grid">
         `;
@@ -210,17 +210,42 @@ function renderCategory(categoryId) {
 function renderSeriesCard(series) {
     const fixedTag = series.fixed ? '<span class="series-tag">FIXED</span>' : '';
     
+    // Info de la serie
+    let seriesInfoHtml = '<div class="series-info">';
+    
+    if (series.car) {
+        seriesInfoHtml += `<div class="info-row"><span class="info-icon">🚗</span><span class="info-label">Coche:</span><span class="info-value">${series.car}</span></div>`;
+    }
+    if (series.license_range) {
+        seriesInfoHtml += `<div class="info-row"><span class="info-icon">📋</span><span class="info-label">Licencia:</span><span class="info-value">${series.license_range}</span></div>`;
+    }
+    if (series.race_frequency) {
+        seriesInfoHtml += `<div class="info-row"><span class="info-icon">⏰</span><span class="info-label">Carreras:</span><span class="info-value">${series.race_frequency}</span></div>`;
+    }
+    if (series.incidents) {
+        seriesInfoHtml += `<div class="info-row"><span class="info-icon">⚠️</span><span class="info-label">Incidentes:</span><span class="info-value">${series.incidents}</span></div>`;
+    }
+    
+    seriesInfoHtml += '</div>';
+    
+    // Semanas
     let weeksHtml = '';
     if (series.weeks && series.weeks.length > 0) {
         weeksHtml = '<div class="weeks-list">';
         
         for (const week of series.weeks) {
             const weatherHtml = getWeatherHtml(week.rain);
+            const durationHtml = week.duration ? `<span class="week-duration">${week.duration}</span>` : '';
+            const startTypeHtml = week.start_type ? `<span class="week-start-type">${week.start_type}</span>` : '';
             
             weeksHtml += `
                 <div class="week-row">
                     <span class="week-num">W${week.week}</span>
                     <span class="week-track" title="${week.track}">${week.track}</span>
+                    <span class="week-details">
+                        ${startTypeHtml}
+                        ${durationHtml}
+                    </span>
                     <span class="week-temp">${week.temp_c}°C</span>
                     <span class="week-weather">${weatherHtml}</span>
                 </div>
@@ -238,6 +263,8 @@ function renderSeriesCard(series) {
                 <div class="series-toggle">▼</div>
             </div>
             <div class="weeks-container">
+                ${seriesInfoHtml}
+                <div class="weeks-divider"></div>
                 ${weeksHtml}
             </div>
         </div>
@@ -270,7 +297,6 @@ function renderSpecialEvents() {
     let html = `<section class="category-section active">`;
     
     if (specialEvents.length === 0) {
-        // Default Sebring event if no data
         html += `
             <div class="special-event-card">
                 <span class="special-event-badge">EVENTO ESPECIAL</span>
@@ -279,9 +305,10 @@ function renderSpecialEvents() {
                     <p><strong>📅 Fecha:</strong> 27-28 de Marzo 2026</p>
                     <p><strong>⏰ Horarios:</strong> 22:00 GMT | 07:00 GMT | 12:00 GMT | 16:00 GMT</p>
                     <p><strong>🏁 Circuito:</strong> Sebring International Raceway</p>
-                    <p><strong>📋 Licencia mínima:</strong> Clase D (4.0)</p>
+                    <p><strong>📋 Licencia mínima:</strong> Class D (4.0) → Pro/WC (4.0)</p>
                     <p><strong>👥 Tipo:</strong> Team Racing (carreras por equipos)</p>
-                    <p><strong>⚠️ Incidentes:</strong> Penalización cada 50 inc. DQ a 150 inc.</p>
+                    <p><strong>👤 Entradas mínimas:</strong> 6 | Split en: 60 | Drops: 0</p>
+                    <p><strong>⚠️ Incidentes:</strong> Penalización cada 50 inc. y cada 20 después. DQ a 150 inc.</p>
                 </div>
             </div>
         `;
@@ -295,8 +322,10 @@ function renderSpecialEvents() {
                         ${event.date ? `<p><strong>📅 Fecha:</strong> ${event.date}</p>` : ''}
                         ${event.times ? `<p><strong>⏰ Horarios:</strong> ${event.times}</p>` : ''}
                         ${event.track ? `<p><strong>🏁 Circuito:</strong> ${event.track}</p>` : ''}
-                        ${event.license ? `<p><strong>📋 Licencia mínima:</strong> ${event.license}</p>` : ''}
+                        ${event.license ? `<p><strong>📋 Licencia:</strong> ${event.license}</p>` : ''}
                         ${event.type ? `<p><strong>👥 Tipo:</strong> ${event.type}</p>` : ''}
+                        ${event.min_entries ? `<p><strong>👤 Entradas:</strong> Mín: ${event.min_entries} | Split: ${event.split_at} | Drops: ${event.drops}</p>` : ''}
+                        ${event.incidents ? `<p><strong>⚠️ Incidentes:</strong> ${event.incidents}</p>` : ''}
                     </div>
                 </div>
             `;
@@ -312,21 +341,39 @@ function renderSpecialEvents() {
 // ============================================
 function toggleSeries(header) {
     const card = header.parentElement;
-    card.classList.toggle('expanded');
+    const grid = card.closest('.series-grid');
+    
+    // Si la tarjeta ya está expandida, solo la cerramos
+    if (card.classList.contains('expanded')) {
+        card.classList.remove('expanded');
+        return;
+    }
+    
+    // Cerrar todas las demás tarjetas en el mismo grid
+    const allCards = grid.querySelectorAll('.series-card.expanded');
+    allCards.forEach(c => c.classList.remove('expanded'));
+    
+    // Abrir la tarjeta actual
+    card.classList.add('expanded');
+    
+    // Scroll suave para que se vea la tarjeta
+    setTimeout(() => {
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
 }
 
 function toggleAllInSection(btn) {
     const section = btn.closest('.license-section');
     const cards = section.querySelectorAll('.series-card');
-    const allExpanded = [...cards].every(c => c.classList.contains('expanded'));
+    const anyExpanded = [...cards].some(c => c.classList.contains('expanded'));
     
     cards.forEach(card => {
-        if (allExpanded) {
+        if (anyExpanded) {
             card.classList.remove('expanded');
         } else {
             card.classList.add('expanded');
         }
     });
     
-    btn.textContent = allExpanded ? 'Expandir' : 'Colapsar';
+    btn.textContent = anyExpanded ? 'Expandir todo' : 'Colapsar todo';
 }
