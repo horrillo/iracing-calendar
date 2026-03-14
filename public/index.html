@@ -86,6 +86,55 @@
         }
 
         /* ============================================
+           ALERTS SYSTEM
+        ============================================ */
+        .alerts-container {
+            display: none;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .alerts-container.has-alerts {
+            display: flex;
+        }
+
+        .alert {
+            padding: 0.875rem 1.5rem;
+            text-align: center;
+            font-size: 0.9rem;
+            font-weight: 500;
+            border-bottom: 1px solid rgba(0,0,0,0.2);
+        }
+
+        .alert-provisional {
+            background: linear-gradient(135deg, #F59E0B, #D97706);
+            color: #000;
+        }
+
+        .alert-custom {
+            background: linear-gradient(135deg, var(--purple-primary), var(--purple-dark));
+            color: #fff;
+        }
+
+        .alert-text {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .alert-lang {
+            opacity: 0.85;
+            font-size: 0.85rem;
+        }
+
+        .alert-separator {
+            opacity: 0.5;
+            margin: 0 0.5rem;
+        }
+
+        /* ============================================
            HEADER
         ============================================ */
         .header {
@@ -738,10 +787,24 @@
                 flex-direction: column;
                 align-items: center;
             }
+
+            .alert-text {
+                flex-direction: column;
+                gap: 0.25rem;
+            }
+
+            .alert-separator {
+                display: none;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- ALERTS CONTAINER -->
+    <div class="alerts-container" id="alertsContainer">
+        <!-- Alerts will be injected here by JavaScript -->
+    </div>
+
     <!-- HEADER -->
     <header class="header">
         <div class="header-content">

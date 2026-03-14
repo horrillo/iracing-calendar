@@ -1,5 +1,6 @@
 // ============================================
 // iRacing Calendar App by Horrillo
+// Con sistema de avisos
 // ============================================
 
 const LICENSE_NAMES = {
@@ -20,15 +21,88 @@ const CATEGORY_MAP = {
 };
 
 let calendarData = null;
+let alertsData = null;
 
 // ============================================
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {
+    await loadAlerts();
     await loadCalendarData();
     setupNavigation();
 });
 
+// ============================================
+// ALERTS SYSTEM
+// ============================================
+async function loadAlerts() {
+    try {
+        const response = await fetch('/data/avisos.json');
+        if (!response.ok) return;
+        
+        alertsData = await response.json();
+        renderAlerts();
+        
+    } catch (error) {
+        console.log('No alerts file found or error loading:', error);
+    }
+}
+
+function renderAlerts() {
+    if (!alertsData) return;
+    
+    const container = document.getElementById('alertsContainer');
+    let hasAlerts = false;
+    let alertsHtml = '';
+    
+    // Check provisional calendar alert
+    if (alertsData.calendario_provisional === true) {
+        hasAlerts = true;
+        const msg = alertsData.mensaje_provisional || {
+            es: '⚠️ Este calendario es PROVISIONAL.',
+            en: '⚠️ This schedule is PROVISIONAL.'
+        };
+        
+        alertsHtml += `
+            <div class="alert alert-provisional">
+                <div class="alert-text">
+                    <span>${msg.es}</span>
+                    <span class="alert-separator">|</span>
+                    <span class="alert-lang">${msg.en}</span>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Check custom alerts
+    if (alertsData.avisos && alertsData.avisos.length > 0) {
+        for (const aviso of alertsData.avisos) {
+            if (aviso.activo === true) {
+                hasAlerts = true;
+                alertsHtml += `
+                    <div class="alert alert-custom">
+                        <div class="alert-text">
+                            <span>${aviso.es || ''}</span>
+                            ${aviso.en ? `<span class="alert-separator">|</span><span class="alert-lang">${aviso.en}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    }
+    
+    container.innerHTML = alertsHtml;
+    
+    if (hasAlerts) {
+        container.classList.add('has-alerts');
+    } else {
+        container.classList.remove('has-alerts');
+    }
+}
+
+// ============================================
+// CALENDAR DATA
+// ============================================
 async function loadCalendarData() {
     try {
         const response = await fetch('/data/calendar.json');
