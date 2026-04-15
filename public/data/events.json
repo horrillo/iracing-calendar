@@ -1,0 +1,190 @@
+{
+  "meta": {
+    "updated": "2026-04-15",
+    "season": "2026",
+    "description": "iRacing special events 2026"
+  },
+  "events": [
+    {
+      "id": 1,
+      "name": "24 Hours of Daytona",
+      "shortName": "Daytona 24h",
+      "date": "2026-01-24T13:00:00Z",
+      "endDate": "2026-01-25T13:00:00Z",
+      "circuit": "Daytona International Speedway",
+      "circuitImage": "assets/images/circuits/daytona.jpg",
+      "circuitCountry": "🇺🇸 USA",
+      "circuitKm": 5.73,
+      "circuitTurns": 12,
+      "duration": "24h",
+      "cars": ["GTP", "LMP2", "GT3"],
+      "license": "D 4.0",
+      "type": "Team Endurance",
+      "officialUrl": "https://www.iracing.com/",
+      "description": "La iRacing 24 Horas de Daytona es uno de los eventos de resistencia más prestigiosos del simracing. GTP, LMP2 y GT3 compiten juntos en el icónico circuito de Florida.",
+      "winners": [
+        { "year": 2025, "driver": "Team Redline", "car": "Porsche 963 GTP" },
+        { "year": 2024, "driver": "Coanda Simsport", "car": "Cadillac GTP" },
+        { "year": 2023, "driver": "Williams Esports", "car": "Acura ARX-06 GTP" }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "12 Hours of Bathurst",
+      "shortName": "Bathurst 12h",
+      "date": "2026-02-08T22:00:00Z",
+      "endDate": "2026-02-09T10:00:00Z",
+      "circuit": "Mount Panorama Circuit",
+      "circuitImage": "assets/images/circuits/bathurst.jpg",
+      "circuitCountry": "🇦🇺 Australia",
+      "circuitKm": 6.213,
+      "circuitTurns": 23,
+      "duration": "12h",
+      "cars": ["GT3"],
+      "license": "C 3.0",
+      "type": "Team Endurance",
+      "officialUrl": "https://www.iracing.com/",
+      "description": "Mount Panorama, uno de los circuitos más desafiantes del mundo. Doce horas de pura intensidad en las alturas de Bathurst, Australia.",
+      "winners": [
+        { "year": 2025, "driver": "Apex Racing Team", "car": "Ferrari 296 GT3" },
+        { "year": 2024, "driver": "Team Redline", "car": "Porsche 992 GT3 R" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "12 Hours of Sebring",
+      "shortName": "Sebring 12h",
+      "date": "2026-03-14T22:00:00Z",
+      "endDate": "2026-03-15T10:00:00Z",
+      "circuit": "Sebring International Raceway",
+      "circuitImage": "assets/images/circuits/sebring.jpg",
+      "circuitCountry": "🇺🇸 USA",
+      "circuitKm": 6.02,
+      "circuitTurns": 17,
+      "duration": "12h",
+      "cars": ["GTP", "LMP2", "GT3", "GTO"],
+      "license": "D 4.0",
+      "type": "Team Endurance",
+      "officialUrl": "https://www.iracing.com/",
+      "description": "Las 12 Horas de Sebring presentadas por VCO. El bumpy raceway de Florida acoge a los mejores equipos del simracing en esta clásica carrera de resistencia IMSA.",
+      "winners": [
+        { "year": 2025, "driver": "Williams Esports", "car": "Porsche 963 GTP" },
+        { "year": 2024, "driver": "Coanda Simsport", "car": "Cadillac GTP" },
+        { "year": 2023, "driver": "Team Redline", "car": "Acura ARX-06 GTP" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "6 Hours of Watkins Glen",
+      "shortName": "Watkins Glen 6h",
+      "date": "2026-06-28T18:00:00Z",
+      "endDate": "2026-06-29T00:00:00Z",
+      "circuit": "Watkins Glen International - Boot",
+      "circuitImage": "assets/images/circuits/watkins-glen.jpg",
+      "circuitCountry": "🇺🇸 USA",
+      "circuitKm": 5.43,
+      "circuitTurns": 11,
+      "duration": "6h",
+      "cars": ["GTP", "LMP2", "GT3"],
+      "license": "C 3.5",
+      "type": "Team Endurance",
+      "officialUrl": "https://www.iracing.com/",
+      "description": "Seis horas de acción en uno de los circuitos permanentes más rápidos de América. Watkins Glen acoge la segunda prueba del calendario de resistencia IMSA.",
+      "winners": [
+        { "year": 2025, "driver": "Mahle SimSport", "car": "Porsche 963 GTP" },
+        { "year": 2024, "driver": "Williams Esports", "car": "Cadillac GTP" }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Indianapolis 500",
+      "shortName": "Indy 500",
+      "date": "2026-05-24T17:00:00Z",
+      "endDate": "2026-05-24T21:00:00Z",
+      "circuit": "Indianapolis Motor Speedway - Oval",
+      "circuitImage": "assets/images/circuits/indianapolis.jpg",
+      "circuitCountry": "🇺🇸 USA",
+      "circuitKm": 4.023,
+      "circuitTurns": 4,
+      "duration": "500 millas",
+      "cars": ["Dallara IR-18"],
+      "license": "B 3.5",
+      "type": "Solo",
+      "officialUrl": "https://www.iracing.com/",
+      "description": "La gran carrera del mes de mayo. 500 millas en el legendario óvalo de Indianápolis, conocida como 'The Greatest Spectacle in Racing'.",
+      "winners": [
+        { "year": 2025, "driver": "Multiple Winners", "car": "Dallara IR-18" },
+        { "year": 2024, "driver": "Multiple Winners", "car": "Dallara IR-18" },
+        { "year": 2023, "driver": "Multiple Winners", "car": "Dallara IR-18" }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Coca-Cola 600",
+      "shortName": "Charlotte 600",
+      "date": "2026-05-25T22:00:00Z",
+      "endDate": "2026-05-26T02:00:00Z",
+      "circuit": "Charlotte Motor Speedway - Oval",
+      "circuitImage": "assets/images/circuits/charlotte.jpg",
+      "circuitCountry": "🇺🇸 USA",
+      "circuitKm": 2.414,
+      "circuitTurns": 4,
+      "duration": "600 millas",
+      "cars": ["NASCAR Cup Series"],
+      "license": "B 3.0",
+      "type": "Solo",
+      "officialUrl": "https://www.iracing.com/",
+      "description": "La carrera más larga de NASCAR. 600 millas de intenso racing bajo las luces nocturnas de Charlotte Motor Speedway. La carrera que más cansa en el simracing.",
+      "winners": [
+        { "year": 2025, "driver": "Multiple Winners", "car": "NASCAR Cup Series" },
+        { "year": 2024, "driver": "Multiple Winners", "car": "NASCAR Cup Series" }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "24 Hours of Le Mans",
+      "shortName": "Le Mans 24h",
+      "date": "2026-06-13T10:00:00Z",
+      "endDate": "2026-06-14T10:00:00Z",
+      "circuit": "Le Mans - 24 Hours of Le Mans",
+      "circuitImage": "assets/images/circuits/lemans.jpg",
+      "circuitCountry": "🇫🇷 Francia",
+      "circuitKm": 13.626,
+      "circuitTurns": 38,
+      "duration": "24h",
+      "cars": ["GTP", "LMP2", "GTE Pro", "GT3"],
+      "license": "C 3.5",
+      "type": "Team Endurance",
+      "officialUrl": "https://www.iracing.com/",
+      "description": "La madre de todas las carreras de resistencia. 24 horas en el mítico Circuit de la Sarthe, el evento más esperado del año en iRacing. Velocidades de más de 330 km/h por las Hunaudières.",
+      "winners": [
+        { "year": 2025, "driver": "Team Redline", "car": "Toyota GR010 Hybrid" },
+        { "year": 2024, "driver": "Williams Esports", "car": "Porsche 963 GTP" },
+        { "year": 2023, "driver": "Coanda Simsport", "car": "Cadillac GTP" },
+        { "year": 2022, "driver": "Apex Racing Team", "car": "Toyota GR010 Hybrid" }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Petit Le Mans",
+      "shortName": "Petit Le Mans",
+      "date": "2026-10-03T18:00:00Z",
+      "endDate": "2026-10-04T04:00:00Z",
+      "circuit": "Road Atlanta - Full Course",
+      "circuitImage": "assets/images/circuits/road-atlanta.jpg",
+      "circuitCountry": "🇺🇸 USA",
+      "circuitKm": 4.088,
+      "circuitTurns": 12,
+      "duration": "10h",
+      "cars": ["GTP", "LMP2", "GT3", "GTO"],
+      "license": "D 4.0",
+      "type": "Team Endurance",
+      "officialUrl": "https://www.iracing.com/",
+      "description": "Las 10 Horas de Road Atlanta. El cierre de la temporada IMSA en uno de los circuitos más rápidos y emocionantes de Estados Unidos.",
+      "winners": [
+        { "year": 2025, "driver": "Coanda Simsport", "car": "Porsche 963 GTP" },
+        { "year": 2024, "driver": "Team Redline", "car": "Cadillac GTP" }
+      ]
+    }
+  ]
+}

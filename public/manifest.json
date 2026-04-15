@@ -1,0 +1,29 @@
+{
+  "name": "iRacing Calendar",
+  "short_name": "iR Calendar",
+  "description": "El calendario más completo de iRacing — todas las series, todos los circuitos, Season 2 2026",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a0b",
+  "theme_color": "#dc2626",
+  "lang": "es",
+  "categories": ["sports", "utilities"],
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "related_applications": []
+}

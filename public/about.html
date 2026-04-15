@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About — iRacing Calendar</title>
+
+  <meta name="description" content="Sobre iRacing Calendar: el calendario más completo de series y eventos iRacing, creado por Horrillo.">
+  <meta name="author"      content="Horrillo">
+  <link rel="canonical"    href="https://iracing-calendar.vercel.app/about.html">
+
+  <meta property="og:title"       content="About — iRacing Calendar">
+  <meta property="og:description" content="El calendario más completo de iRacing, creado por Horrillo.">
+  <meta property="og:image"       content="https://iracing-calendar.vercel.app/logo.png">
+
+  <link rel="manifest"     href="/manifest.json">
+  <meta name="theme-color" content="#dc2626">
+  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="apple-touch-icon"    href="/logo.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+
+  <style>
+    /* About-page specific styles */
+    .about-wrapper {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: var(--space-xl) var(--space-md) var(--space-2xl);
+    }
+
+    .about-hero {
+      text-align: center;
+      padding: var(--space-2xl) 0 var(--space-xl);
+      position: relative;
+    }
+    .about-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 50% at 50% 0%, rgba(220,38,38,0.12), transparent);
+      pointer-events: none;
+    }
+    .about-logo {
+      width: 80px; height: 80px;
+      border-radius: var(--radius-lg);
+      margin: 0 auto var(--space-md);
+      display: block;
+    }
+    .about-title {
+      font-family: var(--font-heading);
+      font-size: 32px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      background: linear-gradient(135deg, #fff 30%, var(--red));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: var(--space-sm);
+    }
+    .about-subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      letter-spacing: 1px;
+    }
+
+    .about-section {
+      background: var(--bg-glass);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: var(--space-xl);
+      margin-bottom: var(--space-lg);
+      position: relative;
+      overflow: hidden;
+    }
+    .about-section::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 3px; height: 100%;
+      background: linear-gradient(180deg, var(--red), var(--orange));
+    }
+
+    .section-title {
+      font-family: var(--font-heading);
+      font-size: 14px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--orange);
+      margin-bottom: var(--space-md);
+    }
+
+    .about-text {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+    .about-text + .about-text { margin-top: var(--space-sm); }
+    .about-text strong { color: var(--text-primary); font-weight: 600; }
+
+    .feature-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: var(--space-sm);
+      margin-top: var(--space-md);
+    }
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-sm);
+      font-size: 14px;
+      color: var(--text-secondary);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
+    }
+    .feature-list li span:first-child { flex-shrink: 0; font-size: 16px; }
+
+    .creator-card {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+      flex-wrap: wrap;
+    }
+    .creator-avatar {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--red), var(--orange));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      flex-shrink: 0;
+      border: 2px solid var(--border-accent);
+    }
+    .creator-info { flex: 1; }
+    .creator-name {
+      font-family: var(--font-heading);
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      margin-bottom: var(--space-xs);
+    }
+    .creator-bio {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: var(--space-md);
+    }
+    .creator-links {
+      display: flex;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+    .creator-link {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--font-heading);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 5px 12px;
+      border-radius: var(--radius-md);
+      transition: all var(--t-fast);
+    }
+    .creator-link:hover {
+      background: var(--red-dim);
+      border-color: var(--border-accent);
+      color: var(--red-light);
+    }
+
+    .disclaimer {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      font-family: var(--font-heading);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: var(--radius-md);
+      transition: all var(--t-fast);
+      margin-bottom: var(--space-xl);
+    }
+    .back-btn:hover {
+      background: var(--red-dim);
+      border-color: var(--border-accent);
+      color: var(--text-primary);
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-layout">
+  <div class="content-wrapper">
+
+    <!-- Header (minimal) -->
+    <header class="site-header">
+      <div class="header-inner">
+        <a href="/" class="brand-link" aria-label="Inicio">
+          <img src="/logo.png" alt="iRacing Calendar" class="brand-logo" width="40" height="40">
+          <div class="brand-text">
+            <span class="brand-name">iRacing Calendar</span>
+            <span class="season-badge">Season 2 • 2026</span>
+          </div>
+        </a>
+        <div class="header-controls">
+          <button class="icon-btn" id="themeToggle" title="Cambiar tema" aria-label="Tema">🌙</button>
+          <div class="social-links">
+            <a href="https://www.twitch.tv/horrillo"    target="_blank" rel="noopener" class="social-link" title="Twitch">🎮</a>
+            <a href="https://twitter.com/horrillo"      target="_blank" rel="noopener" class="social-link" title="Twitter">𝕏</a>
+            <a href="https://www.youtube.com/@horrillo" target="_blank" rel="noopener" class="social-link" title="YouTube">▶</a>
+          </div>
+          <a href="/" class="about-link">← Volver</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="about-wrapper">
+
+      <a href="/" class="back-btn">← Volver al calendario</a>
+
+      <!-- Hero -->
+      <div class="about-hero">
+        <img src="/logo.png" alt="Logo" class="about-logo">
+        <h1 class="about-title">iRacing Calendar</h1>
+        <p class="about-subtitle">El calendario más completo del simracing</p>
+      </div>
+
+      <!-- What is it -->
+      <div class="about-section">
+        <p class="section-title">¿Qué es iRacing Calendar?</p>
+        <p class="about-text">
+          <strong>iRacing Calendar</strong> es una herramienta web gratuita creada para la comunidad hispanohablante de simracing.
+          Su objetivo es ofrecer el calendario más completo y visual de todas las series disponibles en <strong>iRacing</strong>,
+          semana a semana, en un formato limpio y fácil de consultar.
+        </p>
+        <p class="about-text">
+          La plataforma muestra las <strong>142+ series</strong> activas en la temporada actual, organizadas por categoría
+          (Oval, Sports Car, Formula, Dirt…) y por nivel de licencia (Rookie → Clase A), con información detallada
+          de cada circuito, condiciones meteorológicas, duración de carrera y semana actual destacada.
+        </p>
+      </div>
+
+      <!-- Features -->
+      <div class="about-section">
+        <p class="section-title">Características</p>
+        <ul class="feature-list">
+          <li><span>🏎️</span><span>142+ series organizadas por categoría y licencia</span></li>
+          <li><span>📅</span><span>Calendario semana a semana (Season 2 2026)</span></li>
+          <li><span>🗺️</span><span>Base de datos de circuitos con km, curvas y país</span></li>
+          <li><span>🌧️</span><span>Indicadores de lluvia y temperatura por semana</span></li>
+          <li><span>⭐</span><span>Eventos especiales (24h Daytona, Le Mans, Indy 500…)</span></li>
+          <li><span>⏱️</span><span>Countdown en tiempo real para próximos eventos</span></li>
+          <li><span>📅</span><span>Sincronización con Google Calendar</span></li>
+          <li><span>🔔</span><span>Notificaciones de browser opcionales</span></li>
+          <li><span>🌐</span><span>Selector de zona horaria personalizable</span></li>
+          <li><span>☀️🌙</span><span>Modo claro y oscuro</span></li>
+          <li><span>📱</span><span>Instalable como app (PWA)</span></li>
+          <li><span>⚡</span><span>100% estático — sin servidor, ultra rápido</span></li>
+          <li><span>🔍</span><span>Filtros por licencia y búsqueda de serie</span></li>
+          <li><span>⊞</span><span>Vista lista y vista cuadrícula (grilla)</span></li>
+        </ul>
+      </div>
+
+      <!-- How it works -->
+      <div class="about-section">
+        <p class="section-title">¿Cómo funciona?</p>
+        <p class="about-text">
+          Los datos del calendario se generan a partir de los anuncios oficiales de iRacing al inicio de cada temporada.
+          El fichero <strong>events.json</strong> contiene los eventos especiales con información detallada, mientras que
+          <strong>calendar.json</strong> alberga el calendario completo de series con sus pistas semana a semana.
+        </p>
+        <p class="about-text">
+          La web es completamente estática y está desplegada en <strong>Vercel</strong>. No hay base de datos ni servidor:
+          todo se carga y renderiza en el cliente mediante JavaScript vanilla, lo que garantiza velocidad máxima y
+          disponibilidad 24/7.
+        </p>
+      </div>
+
+      <!-- Creator -->
+      <div class="about-section">
+        <p class="section-title">Creado por</p>
+        <div class="creator-card">
+          <div class="creator-avatar">🏁</div>
+          <div class="creator-info">
+            <p class="creator-name">Horrillo</p>
+            <p class="creator-bio">
+              Piloto y streamer de simracing. Apasionado de iRacing, el motorsport virtual y el desarrollo web.
+              Esta herramienta nació de la necesidad de tener un calendario claro y bonito para planificar las carreras.
+            </p>
+            <div class="creator-links">
+              <a href="https://www.twitch.tv/horrillo"    target="_blank" rel="noopener" class="creator-link">🎮 Twitch</a>
+              <a href="https://twitter.com/horrillo"      target="_blank" rel="noopener" class="creator-link">𝕏 Twitter</a>
+              <a href="https://www.youtube.com/@horrillo" target="_blank" rel="noopener" class="creator-link">▶ YouTube</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Disclaimer -->
+      <div class="about-section">
+        <p class="section-title">Aviso legal</p>
+        <p class="disclaimer">
+          iRacing Calendar es un proyecto independiente creado por un fan y no está afiliado, patrocinado ni respaldado por
+          <strong>iRacing Motorsport Simulations</strong>. iRacing® es una marca registrada de iRacing.com Motorsport Simulations, LLC.
+          Toda la información del calendario se extrae de fuentes públicas y puede no reflejar cambios de última hora en el programa oficial.
+          Consulta siempre la web oficial de <a href="https://www.iracing.com/" target="_blank" rel="noopener" style="color:var(--red)">iRacing.com</a>
+          para información definitiva.
+        </p>
+      </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+      <div class="footer-stripe"></div>
+      <div class="footer-inner">
+        <div class="footer-brand-wrap">
+          <img src="/logo.png" alt="Logo" class="footer-logo" width="30" height="30">
+          <span class="footer-brand-name">iRacing Calendar</span>
+        </div>
+        <nav class="footer-links">
+          <a href="/">Inicio</a>
+          <a href="/about.html">About</a>
+          <a href="https://www.iracing.com/" target="_blank" rel="noopener">iRacing.com</a>
+        </nav>
+        <div class="footer-credits">
+          <p>Creado por <a href="https://twitter.com/horrillo" target="_blank" rel="noopener">Horrillo</a></p>
+          <p>No afiliado con iRacing Motorsport Simulations</p>
+        </div>
+      </div>
+    </footer>
+
+  </div><!-- /content-wrapper -->
+</div><!-- /page-layout -->
+
+<script>
+  // Minimal theme toggle for about page
+  const saved = localStorage.getItem('iracing-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  const btn = document.getElementById('themeToggle');
+  if (btn) {
+    btn.innerHTML = saved === 'dark' ? '☀️' : '🌙';
+    btn.addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme');
+      const nxt = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', nxt);
+      localStorage.setItem('iracing-theme', nxt);
+      btn.innerHTML = nxt === 'dark' ? '☀️' : '🌙';
+    });
+  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+</body>
+</html>
