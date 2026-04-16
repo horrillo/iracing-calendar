@@ -14,13 +14,21 @@ const BACKEND_URL = ''; // e.g. 'https://iracing-calendar-backend.up.railway.app
 // ============================================
 // CONSTANTS
 // ============================================
+// License key → display name
+// Backend schema uses 'rookie' | 'D' | 'C' | 'B' | 'A'
 const LICENSE_NAMES = {
-  R: 'ROOKIE', D: 'CLASE D', C: 'CLASE C', B: 'CLASE B', A: 'CLASE A'
+  rookie: 'ROOKIE', R: 'ROOKIE',
+  D: 'CLASE D', C: 'CLASE C', B: 'CLASE B', A: 'CLASE A'
 };
 
+// Nav tab data-category → JSON key in calendar data (schema v2)
+// road / oval / dirt_oval / dirt_road / unranked
 const CATEGORY_MAP = {
-  oval: 'OVAL', sports: 'SPORTS CAR', formula: 'FORMULA CAR',
-  'dirt-oval': 'DIRT OVAL', 'dirt-road': 'DIRT ROAD', unranked: 'UNRANKED'
+  road:      'road',
+  oval:      'oval',
+  dirt_oval: 'dirt_oval',
+  dirt_road: 'dirt_road',
+  unranked:  'unranked',
 };
 
 const SEASON_WEEKS = [
@@ -139,7 +147,7 @@ const state = {
   eventsData: null,
   alertsData: null,
   currentWeek: 1,
-  activeCategory: 'oval',
+  activeCategory: 'road',
   activeView: 'list',
   filters: { license: 'all', search: '' },
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
@@ -167,23 +175,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load data: backend first, static fallback
   const [calResult, evResult, alData] = await Promise.all([
-    fetchWithFallback('/api/series',          '/data/calendar.json'),
+    fetchWithFallback('/api/calendar',        '/data/calendar.json'),
     fetchWithFallback('/api/special-events',  '/data/events.json'),
-    fetchJSON('/data/avisos.json')            // alerts are always local
+    fetchJSON('/data/avisos.json')
   ]);
 
-  // The backend /api/series response wraps data in { meta, series, calendar }
-  // The static calendar.json uses { meta, series: { OVAL: {R:[...]}, ... } }
-  // Normalise both shapes into the same calendarData structure the app expects.
+  // Schema v2: { meta, road:{rookie:[],D:[],…}, oval:{…}, dirt_oval:{…}, dirt_road:{…} }
+  // Backend wraps the same object in { data, source } — fetchWithFallback returns that.
+  // If backend returns { data: { road,oval,… } } unwrap; static JSON is already v2.
   let calData = calResult.data;
-  if (calData && calData.calendar) {
-    // Backend shape: unwrap the nested calendar object
-    calData = calData.calendar;
-  }
+  // Backend /api/calendar response: if it nests under calData.road/oval directly it's fine.
+  // If it wraps as { meta, road, oval, … } that is also fine — it is already the schema.
 
-  // /api/special-events → { meta, events: [...] }
-  // static events.json  → { meta, events: [...] }
-  // Both are the same shape — pass through as-is.
   let evData = evResult.data;
 
   state.calendarData = calData;
@@ -207,7 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNotificationsBtn();
   setupGCalBtn();
 
-  renderCategory('oval');
+  renderCategory('road');
   startCountdowns();
 });
 
@@ -444,9 +447,16 @@ function setupViewToggle() {
 // ============================================
 function renderCategory(categoryId) {
   if (!state.calendarData) return;
-  const catName  = CATEGORY_MAP[categoryId];
-  const catData  = state.calendarData.series?.[catName];
-  if (!catData) { document.getElementById('mainContent').innerHTML = '<div class="error-state">⚠️ Sin datos para esta categoría.</div>'; return; }
+
+  // Schema v2: data keys are road / oval / dirt_oval / dirt_road / unranked
+  // Tab category IDs map 1:1 to schema keys (CATEGORY_MAP is identity for v2)
+  const schemaKey = CATEGORY_MAP[categoryId] || categoryId;
+  const catData   = state.calendarData[schemaKey];
+
+  if (!catData) {
+    document.getElementById('mainContent').innerHTML = '<div class="error-state">⚠️ Sin datos para esta categoría.</div>';
+    return;
+  }
 
   if (state.activeView === 'calendar') {
     renderCalendarView(catData);
@@ -458,25 +468,40 @@ function renderCategory(categoryId) {
   for (const k in _seriesRegistry) delete _seriesRegistry[k];
 
   let html = '';
-  for (const lic of ['R', 'D', 'C', 'B', 'A']) {
+
+  // Schema v2 license keys: rookie / D / C / B / A
+  const LIC_ORDER = ['rookie', 'D', 'C', 'B', 'A'];
+  const LIC_BADGE = { rookie: 'R', D: 'D', C: 'C', B: 'B', A: 'A' };
+
+  for (const lic of LIC_ORDER) {
     let list = catData[lic] || [];
-    // Apply filters
-    if (state.filters.license !== 'all' && state.filters.license !== lic) continue;
+
+    // Apply license filter: compare against badge letter OR 'rookie'
+    if (state.filters.license !== 'all') {
+      const filterLic = state.filters.license.toLowerCase();
+      const thisBadge = LIC_BADGE[lic].toLowerCase();
+      const thisKey   = lic.toLowerCase();
+      if (filterLic !== thisBadge && filterLic !== thisKey) continue;
+    }
+
     if (state.filters.search) list = list.filter(s => s.name.toLowerCase().includes(state.filters.search));
     if (!list.length) continue;
 
+    const badge       = LIC_BADGE[lic];
+    const displayName = LICENSE_NAMES[lic] || LICENSE_NAMES[badge] || lic.toUpperCase();
+
     html += `
       <div class="license-section">
-        <div class="license-header ${lic}">
-          <div class="license-badge ${lic}">${lic}</div>
-          <span class="license-title">${LICENSE_NAMES[lic]}</span>
+        <div class="license-header ${badge}">
+          <div class="license-badge ${badge}">${badge}</div>
+          <span class="license-title">${displayName}</span>
           <span class="license-count">${list.length} series</span>
           <button class="expand-btn" onclick="toggleAllInSection(this)">Expandir todo</button>
         </div>
         <div class="series-grid">
           ${list.map(s => {
             const idx = _seriesRegIdx++;
-            _seriesRegistry[idx] = { ...s, license: s.license || lic, category: categoryId };
+            _seriesRegistry[idx] = { ...s, license: lic, category: schemaKey };
             return renderSeriesCard(s, idx);
           }).join('')}
         </div>
@@ -572,9 +597,13 @@ function renderCalendarView(catData) {
   headerRow += '</div>';
 
   let rows = '';
-  for (const lic of ['R', 'D', 'C', 'B', 'A']) {
+  for (const lic of ['rookie', 'D', 'C', 'B', 'A']) {
     let list = catData[lic] || [];
-    if (state.filters.license !== 'all' && state.filters.license !== lic) continue;
+    const licBadge = lic === 'rookie' ? 'R' : lic;
+    if (state.filters.license !== 'all') {
+      const f = state.filters.license.toLowerCase();
+      if (f !== licBadge.toLowerCase() && f !== lic.toLowerCase()) continue;
+    }
     if (state.filters.search) list = list.filter(s => s.name.toLowerCase().includes(state.filters.search));
     for (const s of list) {
       rows += `<div class="cal-series-row" style="grid-template-columns:${cols}">

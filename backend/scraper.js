@@ -1,19 +1,19 @@
 // ============================================
-// scraper.js — iracing.es public calendar scraper
+// scraper.js — iracing.es public calendar scraper  v3
 // Target: https://iracing.es/iracing/calendario-oficial
 //
 // Responsible scraping:
 //   · Full browser headers to avoid 403
 //   · Rate-limited (1 req / 6 s)
-//   · robots.txt checked before each domain
-//   · 6-hour cache TTL (data rarely changes mid-season)
-//   · Graceful fallback to static calendar.json
+//   · robots.txt checked and respected
+//   · 6-hour cache TTL
+//   · Graceful fallback to static calendar.json (schema v2)
 // ============================================
 
-import fetch   from 'node-fetch';
-import * as ch from 'cheerio';
-import fs      from 'fs';
-import path    from 'path';
+import fetch            from 'node-fetch';
+import * as ch          from 'cheerio';
+import fs               from 'fs';
+import path             from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,15 +23,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // ============================================
 const TARGET_URL    = 'https://iracing.es/iracing/calendario-oficial';
 const USER_AGENT    = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const REQUEST_DELAY = 6000;   // ms between outbound requests
-const FETCH_TIMEOUT = 15000;  // ms per request
+const REQUEST_DELAY = 6000;
+const FETCH_TIMEOUT = 20000;
 
 const STATIC_CALENDAR = path.join(__dirname, '../public/data/calendar.json');
 const STATIC_EVENTS   = path.join(__dirname, '../public/data/events.json');
 
 // ============================================
 // SEASON WEEKS  (Season 2 · 2026)
-// Update here when a new season starts.
 // ============================================
 const SEASON_WEEKS = [
   { week: 1,  start: '2026-03-17', end: '2026-03-23' },
@@ -49,72 +48,50 @@ const SEASON_WEEKS = [
   { week: 13, start: '2026-06-09', end: '2026-06-15' },
 ];
 
-// Category name normalisation (Spanish labels → internal keys)
-const CATEGORY_MAP = {
-  'road':       'road',
-  'road car':   'road',
-  'oval':       'oval',
-  'dirt road':  'dirt-road',
-  'dirt oval':  'dirt-oval',
-  'unranked':   'unranked',
-};
-
-// License name normalisation
-const LICENSE_MAP = {
-  'rookie': 'R', 'novato': 'R',
-  'd': 'D', 'clase d': 'D',
-  'c': 'C', 'clase c': 'C',
-  'b': 'B', 'clase b': 'B',
-  'a': 'A', 'clase a': 'A',
-  'pro': 'PRO', 'pro/wc': 'PRO',
-};
-
 // ============================================
-// SERIES CLASSIFIER
-// Determines category from series name + car name.
-// Evaluation order matters: more specific rules first.
+// NORMALISATION MAPS
+// Spanish labels from iracing.es → internal keys
 // ============================================
-export function classifySeries(name = '', car = '') {
-  const t = `${name} ${car}`.toLowerCase();
 
-  // ── DIRT OVAL ─────────────────────────────
-  // Sprint cars, midgets, dirt late models, dirt modifieds
-  if (/\b(sprint\s*car|wingless\s*sprint|dirt\s*sprint|410\b|360\s*sprint|305\s*sprint|super\s*600|midget|micro\s*sprint|dirt\s*late\s*model|late\s*model.*dirt|limited\s*late.*dirt|dirt.*modif|modif.*dirt|dirt.*street\s*stock|street\s*stock.*dirt|eldora|knoxville|williams\s*grove|volusia|ucr\s*sprint|usac|hav-a-tampa)\b/.test(t)) {
-    return 'dirt-oval';
-  }
+// How iracing.es labels categories (Spanish + English variants)
+const CATEGORY_LABELS = [
+  { key: 'road',      patterns: ['circuito', 'road', 'carretera', 'asfalto', 'sport', 'formula', 'sports car', 'formula car', 'gt', 'turismo'] },
+  { key: 'oval',      patterns: ['oval'] },
+  { key: 'dirt_road', patterns: ['tierra.*carretera', 'dirt.*road', 'tierra.*road', 'off.*road', 'rallycross', 'tierra carretera'] },
+  { key: 'dirt_oval', patterns: ['tierra.*oval', 'dirt.*oval', 'tierra oval'] },
+  { key: 'unranked',  patterns: ['unranked', 'sin.*ranking', 'sin clasificar'] },
+];
 
-  // ── DIRT ROAD ─────────────────────────────
-  // Rallycross, off-road, Pro 2/4, lites
-  if (/\b(rallycross|rally\s*cross|off.?road|pro\s*[24]\b|pro-[24]\b|pro2|pro4|lite\s*truck|lites\b|extreme\s*dirt|rallycars|crosskart)\b/.test(t)) {
-    return 'dirt-road';
-  }
+// How iracing.es labels license levels
+const LICENSE_LABELS = [
+  { key: 'rookie', patterns: ['rookie', 'novato', 'principiante', 'r ('] },
+  { key: 'D',      patterns: ['clase d', 'class d', '\\bd\\b', 'd ('] },
+  { key: 'C',      patterns: ['clase c', 'class c', '\\bc\\b', 'c ('] },
+  { key: 'B',      patterns: ['clase b', 'class b', '\\bb\\b', 'b ('] },
+  { key: 'A',      patterns: ['clase a', 'class a', '\\ba\\b', 'a ('] },
+];
 
-  // ── OVAL ──────────────────────────────────
-  // NASCAR, ARCA, oval IndyCar, Super Late Models, Legends, etc.
-  if (/\b(nascar|cup\s*series|xfinity|craftsman\s*truck|arca|super\s*late\s*model|late\s*model\b(?!.*dirt)|legends\s*car|legends\s*oval|street\s*stock\b(?!.*dirt)|mini\s*stock|strictly\s*stock|sk\s*mod|thunder\s*car|sportsman\b|pro\s*series.*oval|asphalt.*late\s*model|modif.*asphalt|asphalt.*modif|stock\s*car|dirt\s*to\s*daytona)\b/.test(t)) {
-    return 'oval';
+function normCategory(raw) {
+  const t = (raw || '').toLowerCase().trim();
+  for (const { key, patterns } of CATEGORY_LABELS) {
+    if (patterns.some(p => new RegExp(p).test(t))) return key;
   }
-  // IndyCar on ovals
-  if (/indycar/.test(t) && /oval/.test(t)) return 'oval';
-  // Generic oval keywords
-  if (/\b(superspeedway|short\s*track\b)\b/.test(t) && !/road|circuit|spa|lemans|daytona\s*road/.test(t)) {
-    return 'oval';
-  }
-
-  // ── ROAD (default) ────────────────────────
-  // GT3, GT4, GTE, LMP, GTP, Formula, Touring, production, open wheel…
-  return 'road';
+  return null;
 }
 
-// Also maps static calendar.json category names to slugs
-export const STATIC_CAT_TO_SLUG = {
-  'OVAL':       'oval',
-  'SPORTS CAR': 'road',
-  'FORMULA CAR':'road',
-  'DIRT OVAL':  'dirt-oval',
-  'DIRT ROAD':  'dirt-road',
-  'UNRANKED':   'unranked',
-};
+function normLicense(raw) {
+  const t = (raw || '').toLowerCase().trim();
+  for (const { key, patterns } of LICENSE_LABELS) {
+    if (patterns.some(p => new RegExp(p).test(t))) return key;
+  }
+  // Fallback: single letter
+  const m = t.match(/^([rdcba])$/i);
+  if (m) {
+    const l = m[1].toUpperCase();
+    return l === 'R' ? 'rookie' : l;
+  }
+  return null;
+}
 
 // ============================================
 // RATE LIMITER
@@ -124,15 +101,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function rateLimit() {
   const wait = REQUEST_DELAY - (Date.now() - lastRequest);
-  if (wait > 0) {
-    console.log(`[scraper] rate-limit: waiting ${wait}ms`);
-    await sleep(wait);
-  }
+  if (wait > 0) await sleep(wait);
   lastRequest = Date.now();
 }
 
 // ============================================
-// FETCH  with full browser headers
+// FETCH with full browser headers
 // ============================================
 async function browserFetch(url) {
   await rateLimit();
@@ -158,7 +132,7 @@ async function browserFetch(url) {
       }
     });
     clearTimeout(tid);
-    console.log(`[scraper] → HTTP ${res.status} (${res.headers.get('content-type') || 'unknown'})`);
+    console.log(`[scraper] HTTP ${res.status}`);
     return res;
   } catch (err) {
     clearTimeout(tid);
@@ -177,26 +151,21 @@ async function isAllowed(url) {
     const { origin } = new URL(url);
     if (!robotsCache.has(origin)) {
       const res = await browserFetch(`${origin}/robots.txt`);
-      const txt = res ? await res.text() : '';
+      const txt = res?.ok ? await res.text() : '';
       const disallowed = [];
-      let match = false;
+      let inBlock = false;
       for (const line of txt.split('\n').map(l => l.trim())) {
-        if (/^User-agent:\s*\*/i.test(line) || new RegExp('User-agent:\\s*' + USER_AGENT.split('/')[0], 'i').test(line)) {
-          match = true;
-        } else if (/^User-agent:/i.test(line)) {
-          match = false;
-        } else if (match && /^Disallow:\s*/i.test(line)) {
+        if (/^User-agent:\s*\*/i.test(line)) { inBlock = true; }
+        else if (/^User-agent:/i.test(line))  { inBlock = false; }
+        else if (inBlock && /^Disallow:\s*/i.test(line)) {
           const p = line.replace(/^Disallow:\s*/i, '').trim();
           if (p) disallowed.push(p);
         }
       }
       robotsCache.set(origin, disallowed);
-      console.log(`[scraper] robots.txt for ${origin}: ${disallowed.length} disallow rules`);
     }
     const pathname = new URL(url).pathname;
-    const blocked  = robotsCache.get(origin).some(d => pathname.startsWith(d));
-    if (blocked) console.warn(`[scraper] robots.txt blocks: ${url}`);
-    return !blocked;
+    return !robotsCache.get(origin).some(d => pathname.startsWith(d));
   } catch { return true; }
 }
 
@@ -213,659 +182,630 @@ function loadStatic(filePath) {
 }
 
 // ============================================
+// EMPTY CALENDAR SKELETON
+// ============================================
+function emptyCalendar() {
+  return {
+    road:      { rookie: [], D: [], C: [], B: [], A: [] },
+    oval:      { rookie: [], D: [], C: [], B: [], A: [] },
+    dirt_road: { rookie: [], D: [], C: [], B: [], A: [] },
+    dirt_oval: { rookie: [], D: [], C: [], B: [], A: [] },
+    unranked:  { rookie: [], D: [], C: [], B: [], A: [] },
+  };
+}
+
+// ============================================
 // HTML PARSER — iracing.es/iracing/calendario-oficial
 //
-// Strategy order (tries each until data is found):
-//   1. Tables  — week rows inside a <table>
-//   2. Accordion / tabs  — common in WordPress page builders
-//   3. Data attributes   — custom HTML5 attrs
-//   4. Generic divs      — broad class-name heuristics
-//   5. Embedded JSON     — window.__STATE__, __NEXT_DATA__, etc.
+// iracing.es is a WordPress/Elementor site.
+// The page organises data in one of these patterns:
+//
+//   A. Tabs/panels by CATEGORY, then headings by LICENSE
+//      <div id="road">
+//        <h2>Rookie</h2> <table>…</table>
+//        <h2>Clase D</h2> <table>…</table>
+//      </div>
+//
+//   B. Sections by LICENSE, sub-sections by CATEGORY
+//      <h2>Rookie</h2>
+//        <h3>Road</h3> <table>…</table>
+//
+//   C. Single big table with columns: Serie | Coche | Licencia | Categoría | S1 | S2 | …
+//
+// We try all strategies in order, take the first that yields >= 5 series.
 // ============================================
 
 function parseHtml(html) {
   const $ = ch.load(html);
-  const series = [];
 
-  // ---------- helpers ----------
+  // Remove noise
+  $('script, style, nav, header, footer, .sidebar, .widget, .menu, .advertisement, .ad').remove();
 
-  function normCategory(raw) {
-    const key = (raw || '').toLowerCase().trim().replace(/[^a-z ]/g, '');
-    return CATEGORY_MAP[key] || key || 'road';
+  // ── helpers ─────────────────────────────────────────────────────────────
+
+  function headingCategory(text) {
+    return normCategory(text);
+  }
+  function headingLicense(text) {
+    return normLicense(text);
   }
 
-  function normLicense(raw) {
-    const key = (raw || '').toLowerCase().trim();
-    return LICENSE_MAP[key] || raw?.toUpperCase() || '?';
-  }
-
+  // Extract week→track pairs from a row/container element
   function extractWeeks($el) {
     const weeks = [];
-    // Look for week cells: anything containing "Semana X" or "Week X"
-    $el.find('[class*="week"], [class*="semana"], [class*="round"], td, li').each((_, node) => {
-      const text = $(node).text().trim();
-      const mWeek  = text.match(/(?:semana|week|wk|ronda|round)[.\s#]*(\d+)/i);
-      const mTrack = text.replace(/(?:semana|week|wk|ronda|round)[.\s#]*\d+/i, '').trim();
-      if (mWeek && mTrack) {
-        weeks.push({ week: parseInt(mWeek[1], 10), track: mTrack });
+
+    // Look for cells with "Semana X" or "Week X" text patterns
+    $el.find('td, th, li, [class*="week"], [class*="semana"]').each((_, node) => {
+      const txt = $(node).text().trim();
+      const mW  = txt.match(/(?:semana|week|wk|s)[.\s#]*(\d+)[.\s:]*(.*)/i);
+      if (mW) {
+        const wNum   = parseInt(mW[1], 10);
+        const wTrack = mW[2].trim() || $(node).next().text().trim();
+        if (wNum >= 1 && wNum <= 13 && wTrack) {
+          weeks.push({ week: wNum, track: wTrack });
+        }
       }
     });
 
-    // If nothing found, try sequential children
-    if (!weeks.length) {
-      let weekNum = 1;
-      $el.find('td, li, [class*="track"], [class*="circuit"], [class*="pista"]').each((_, node) => {
-        const t = $(node).text().trim();
-        if (t && t.length > 2 && !t.match(/^\d+$/)) {
-          weeks.push({ week: weekNum++, track: t });
-        }
-      });
-    }
+    if (weeks.length) return weeks;
+
+    // Fallback: sequential non-header cells → assume they are week tracks in order
+    let n = 1;
+    $el.find('td').each((_, node) => {
+      const txt = $(node).text().trim();
+      if (txt && txt.length > 2 && txt.length < 120 && !/^[\d.]+$/.test(txt)) {
+        weeks.push({ week: n++, track: txt });
+        if (n > 13) return false;
+      }
+    });
+
     return weeks;
   }
 
-  // ─────────────────────────────────────────
-  // STRATEGY 1 · Tables
-  // Typical WordPress layout: <table> where each <tr> is a series,
-  // columns: Name | Category | License | Car | Week1 | Week2 | …
-  // ─────────────────────────────────────────
-  let headers = [];
-  $('table').each((_, table) => {
-    const $table = $(table);
-    const $rows  = $table.find('tr');
-    if ($rows.length < 2) return;
+  // ── STRATEGY A: Tabs by category, headings by license ───────────────────
+  // WordPress tab/accordion plugins put content in divs with id= the tab slug.
+  // Look for: tab panels that contain license headings and series tables.
+  {
+    const catPanels = [];
 
-    // Build header map from first row
-    const $hdr = $($rows[0]).find('th, td');
-    const localHeaders = [];
-    $hdr.each((_, h) => localHeaders.push($(h).text().trim().toLowerCase()));
+    // Collect all elements that carry a category hint in id/class/data-attr
+    $('[id], [class*="tab"], [class*="panel"], [class*="pane"]').each((_, el) => {
+      const id    = ($(el).attr('id')    || '').toLowerCase();
+      const cls   = ($(el).attr('class') || '').toLowerCase();
+      const hint  = id + ' ' + cls;
+      const cat   = normCategory(hint);
+      if (cat) catPanels.push({ cat, $el: $(el) });
+    });
 
-    if (!localHeaders.some(h => h.includes('serie') || h.includes('series') || h.includes('name') || h.includes('nombre'))) return;
+    if (catPanels.length) {
+      const series = [];
+      for (const { cat, $el } of catPanels) {
+        // Look for license headings within this panel
+        $el.find('h1, h2, h3, h4, h5, h6, .heading, .section-title, [class*="license"], [class*="licencia"]').each((_, hEl) => {
+          const hText = $(hEl).text().trim();
+          const lic   = headingLicense(hText);
+          if (!lic) return;
 
-    headers = localHeaders;
-    console.log(`[scraper] Strategy 1 (table): headers = [${headers.join(', ')}]`);
+          // Gather all series tables/rows between this heading and the next
+          const $section = $(hEl).nextUntil('h1, h2, h3, h4, h5, h6');
 
-    $rows.slice(1).each((_, tr) => {
-      const $cells = $(tr).find('td');
-      if ($cells.length < 2) return;
+          // Try tables first
+          $section.filter('table, div').addBack('table, div').find('table').addBack('table').each((_, tbl) => {
+            const $rows = $(tbl).find('tr');
+            if ($rows.length < 2) return;
 
-      const get = keyword => {
-        const idx = headers.findIndex(h => h.includes(keyword));
-        return idx >= 0 ? $($cells[idx]).text().trim() : '';
+            const $hdrs    = $($rows[0]).find('th, td').map((_, c) => $(c).text().trim().toLowerCase()).get();
+            const nameIdx  = $hdrs.findIndex(h => /serie|name|nombre/i.test(h));
+            const carIdx   = $hdrs.findIndex(h => /coche|car|vehicle|veh/i.test(h));
+            const fixedIdx = $hdrs.findIndex(h => /fixed|fijo/i.test(h));
+
+            // Week columns: "s1", "semana 1", "week 1", "1"
+            const weekCols = [];
+            $hdrs.forEach((h, i) => {
+              const m = h.match(/^(?:semana|week|s|w)\s*(\d+)$/) || h.match(/^(\d+)$/);
+              if (m) weekCols.push({ col: i, week: parseInt(m[1], 10) });
+            });
+
+            $rows.slice(1).each((_, tr) => {
+              const $cells = $(tr).find('td');
+              if ($cells.length < 2) return;
+
+              const cell  = i => $($cells[i])?.text().trim() || '';
+              const name  = nameIdx >= 0 ? cell(nameIdx) : cell(0);
+              if (!name || name.length < 3) return;
+
+              const car   = carIdx   >= 0 ? cell(carIdx)   : '';
+              const fixed = fixedIdx >= 0 ? /sí|si|yes|true|x/i.test(cell(fixedIdx)) : false;
+              const weeks = weekCols.length
+                ? weekCols.map(({ col, week }) => ({ week, track: cell(col) })).filter(w => w.track)
+                : extractWeeks($(tr));
+
+              series.push({ name, car, fixed, license: lic, category: cat, weeks });
+            });
+          });
+
+          // If no table, look for list items / divs as rows
+          if (!series.length || series[series.length - 1].license !== lic) {
+            $section.filter('ul, ol').find('li').each((_, li) => {
+              const text = $(li).text().trim();
+              if (text.length < 3) return;
+              series.push({ name: text, car: '', fixed: false, license: lic, category: cat, weeks: [] });
+            });
+          }
+        });
+      }
+      if (series.length >= 5) {
+        console.log(`[scraper] Strategy A (tabs by category) → ${series.length} series`);
+        return series;
+      }
+    }
+  }
+
+  // ── STRATEGY B: Headings by license, sub-sections by category ───────────
+  {
+    const series = [];
+    $('h1, h2, h3').each((_, hEl) => {
+      const hText = $(hEl).text().trim();
+      const lic   = headingLicense(hText);
+      if (!lic) return;
+
+      // Look for category sub-headings or just table rows under this license heading
+      const $after = $(hEl).nextUntil('h1, h2, h3');
+
+      // Sub-category headings within this license block
+      $after.filter('h3, h4').each((_, subH) => {
+        const catText = $(subH).text().trim();
+        const cat     = headingCategory(catText);
+        if (!cat) return;
+
+        $(subH).nextUntil('h3, h4').filter('table').find('tr').slice(1).each((_, tr) => {
+          const $c  = $(tr).find('td');
+          const name = $($c[0]).text().trim();
+          if (!name || name.length < 3) return;
+          const weeks = extractWeeks($(tr));
+          series.push({ name, car: $($c[1])?.text().trim() || '', fixed: false, license: lic, category: cat, weeks });
+        });
+      });
+
+      // Direct table under license heading (use category from nearest heading context)
+      $after.filter('table').each((_, tbl) => {
+        // Detect category from closest ancestor or previous heading
+        let cat = null;
+        let node = tbl;
+        for (let i = 0; i < 8 && !cat; i++) {
+          const p = $(node).parent()[0];
+          if (!p) break;
+          const prevH = $(p).find('h1,h2,h3,h4').filter((_, h) => $(h).text() !== hText).last().text();
+          cat = headingCategory(prevH);
+          node = p;
+        }
+        cat = cat || 'road';
+
+        $(tbl).find('tr').slice(1).each((_, tr) => {
+          const $c  = $(tr).find('td');
+          const name = $($c[0]).text().trim();
+          if (!name || name.length < 3) return;
+          const weeks = extractWeeks($(tr));
+          series.push({ name, car: $($c[1])?.text().trim() || '', fixed: false, license: lic, category: cat, weeks });
+        });
+      });
+    });
+
+    if (series.length >= 5) {
+      console.log(`[scraper] Strategy B (headings by license) → ${series.length} series`);
+      return series;
+    }
+  }
+
+  // ── STRATEGY C: Single big table with category/license columns ──────────
+  {
+    const series = [];
+    $('table').each((_, tbl) => {
+      const $rows   = $(tbl).find('tr');
+      if ($rows.length < 3) return;
+
+      const $hdr    = $($rows[0]).find('th, td');
+      const hdrs    = $hdr.map((_, c) => $(c).text().trim().toLowerCase()).get();
+
+      if (!hdrs.some(h => /serie|series|name|nombre/i.test(h))) return;
+
+      const idx = {
+        name:    hdrs.findIndex(h => /serie|series|name|nombre/i.test(h)),
+        car:     hdrs.findIndex(h => /coche|car|vehicle/i.test(h)),
+        lic:     hdrs.findIndex(h => /licen|clase|license/i.test(h)),
+        cat:     hdrs.findIndex(h => /categ|tipo|type/i.test(h)),
+        fixed:   hdrs.findIndex(h => /fixed|fijo/i.test(h)),
       };
 
-      const name    = get('serie') || get('series') || get('name') || get('nombre') || $($cells[0]).text().trim();
-      if (!name || name.length < 3) return;
-
-      const weeks = [];
-      headers.forEach((h, i) => {
-        const mWeek = h.match(/^(?:semana|week|wk|s|w)\s*(\d+)$/i);
-        if (mWeek) {
-          const track = $($cells[i]).text().trim();
-          if (track) weeks.push({ week: parseInt(mWeek[1], 10), track });
-        }
+      const weekCols = [];
+      hdrs.forEach((h, i) => {
+        const m = h.match(/^(?:semana|week|s|w)\s*(\d+)$/) || (h.match(/^(\d+)$/) && parseInt(h) <= 13 && parseInt(h) >= 1);
+        if (m) weekCols.push({ col: i, week: parseInt(Array.isArray(m) ? m[1] : h, 10) });
       });
 
-      series.push({
-        name,
-        category: normCategory(get('categor') || get('type') || get('tipo')),
-        license:  normLicense(get('licenci') || get('license') || get('clase')),
-        car:      get('coche') || get('car') || get('vehículo') || '',
-        weeks,
-      });
-    });
-  });
+      console.log(`[scraper] Strategy C: table with ${$rows.length} rows, weekCols=${weekCols.length}`);
 
-  if (series.length) {
-    console.log(`[scraper] Strategy 1 found ${series.length} series`);
-    return series;
-  }
-
-  // ─────────────────────────────────────────
-  // STRATEGY 2 · Category sections + nested series
-  // Pattern: <div class="category-road"> ... <div class="serie"> …
-  // ─────────────────────────────────────────
-  const catSelectors = [
-    '[class*="categoria"], [class*="category"]',
-    '[class*="road"], [class*="oval"], [class*="dirt"]',
-    'section, article',
-    '.tab-content > div, .tab-pane',
-    '[id*="road"], [id*="oval"], [id*="dirt"]',
-  ];
-
-  for (const catSel of catSelectors) {
-    $(catSel).each((_, catEl) => {
-      const $cat     = $(catEl);
-      const catLabel = $cat.attr('data-category') ||
-                       $cat.attr('data-type')     ||
-                       $cat.find('h2, h3, h4').first().text().trim() ||
-                       $cat.attr('class')          ||
-                       '';
-      const category = normCategory(catLabel);
-
-      // Find series within this category block
-      const serieSelectors = ['[class*="serie"], [class*="series"]', '[class*="row"]:not(:first-child)', 'article', '.entry'];
-      for (const sSel of serieSelectors) {
-        $cat.find(sSel).each((_, sEl) => {
-          const $s     = $(sEl);
-          const name   = $s.find('[class*="name"], [class*="nombre"], [class*="title"], h2, h3, h4, strong').first().text().trim();
-          if (!name || name.length < 3) return;
-
-          const license = normLicense(
-            $s.find('[class*="licenci"], [class*="license"], [class*="clase"]').first().text().trim()
-          );
-          const car     = $s.find('[class*="coche"], [class*="car"], [class*="vehicle"]').first().text().trim();
-          const weeks   = extractWeeks($s);
-
-          series.push({ name, category, license, car, weeks });
-        });
-      }
-    });
-    if (series.length) break;
-  }
-
-  if (series.length) {
-    console.log(`[scraper] Strategy 2 found ${series.length} series`);
-    return series;
-  }
-
-  // ─────────────────────────────────────────
-  // STRATEGY 3 · Accordion / tabs (Elementor, WPBakery, Divi…)
-  // Pattern: clicking a header reveals a panel with schedule
-  // HTML is fully present; just hidden via CSS
-  // ─────────────────────────────────────────
-  const accordionPanels = [
-    '[class*="accordion-content"]',
-    '[class*="panel-body"]',
-    '[class*="tab-content"]',
-    '[class*="toggle-content"]',
-    '[class*="elementor-tab-content"]',
-    '[class*="vc_tta-panel-body"]',
-  ];
-
-  for (const panelSel of accordionPanels) {
-    $(panelSel).each((_, panel) => {
-      const $panel = $(panel);
-      const title  = $panel.closest('[class*="accordion-item"], [class*="panel"], [class*="tab"]')
-                           .find('[class*="title"], [class*="header"], [class*="heading"]')
-                           .first().text().trim();
-      if (!title) return;
-
-      // Each row/item inside the panel is a series
-      $panel.find('tr:not(:first-child), [class*="row"]:not(:first-child), li').each((_, row) => {
-        const $row = $(row);
-        const name = $row.find('td:first-child, [class*="name"]').text().trim() || $row.text().trim().split('\n')[0];
+      $rows.slice(1).each((_, tr) => {
+        const $c   = $(tr).find('td');
+        const cell = i => i >= 0 && i < $c.length ? $($c[i]).text().trim() : '';
+        const name = idx.name >= 0 ? cell(idx.name) : cell(0);
         if (!name || name.length < 3) return;
-        const weeks = extractWeeks($row);
-        series.push({
-          name,
-          category: normCategory(title),
-          license:  '?',
-          car:      '',
-          weeks,
-        });
+
+        const rawLic = idx.lic >= 0 ? cell(idx.lic) : '';
+        const rawCat = idx.cat >= 0 ? cell(idx.cat) : '';
+        const lic    = normLicense(rawLic) || 'D';
+        const cat    = normCategory(rawCat) || 'road';
+        const car    = idx.car >= 0 ? cell(idx.car) : '';
+        const fixed  = idx.fixed >= 0 ? /sí|si|yes|true|x/i.test(cell(idx.fixed)) : false;
+        const weeks  = weekCols.length
+          ? weekCols.map(({ col, week }) => ({ week, track: cell(col) })).filter(w => w.track)
+          : extractWeeks($(tr));
+
+        series.push({ name, car, fixed, license: lic, category: cat, weeks });
       });
     });
-    if (series.length) break;
+
+    if (series.length >= 5) {
+      console.log(`[scraper] Strategy C (big table) → ${series.length} series`);
+      return series;
+    }
   }
 
-  if (series.length) {
-    console.log(`[scraper] Strategy 3 found ${series.length} series`);
-    return series;
-  }
+  // ── STRATEGY D: Elementor / WPBakery tab widget ──────────────────────────
+  // These builders output data as nested divs.
+  // Tab title → contains category or license label
+  // Tab content → contains series rows
+  {
+    const series = [];
 
-  // ─────────────────────────────────────────
-  // STRATEGY 4 · Broad heuristic scan
-  // Walk ALL elements; any that look like a series name
-  // followed by track-like children get harvested.
-  // ─────────────────────────────────────────
-  $('[class]').each((_, el) => {
-    const cls  = $(el).attr('class') || '';
-    const text = $(el).clone().children().remove().end().text().trim();
-    if (!text || text.length < 5 || text.length > 120) return;
+    // Elementor tabs
+    const tabContents = [
+      '.elementor-tab-content',
+      '.e-tab-content',
+      '.vc_tta-panel-body',
+      '.fusion-panel-shortcode-content',
+      '.wpb_tab',
+    ];
 
-    // Skip navigation, headers, footers, menus
-    if (cls.match(/nav|menu|header|footer|logo|sidebar|widget|button|btn|icon|social|comment|breadcrumb/i)) return;
+    for (const sel of tabContents) {
+      $(sel).each((_, panel) => {
+        const $panel = $(panel);
 
-    // Looks like a series name: capitalised, no common navigation words
-    if (text.match(/series|serie|cup|championship|liga|open|trophy|race|challenge/i)) {
-      const category = (() => {
-        // Walk up to find a parent with a category hint
-        let node = el;
-        for (let i = 0; i < 5; i++) {
-          node = $(node).parent()[0];
-          if (!node) break;
-          const parentText = $(node).find('h2, h3, h4').first().text().toLowerCase();
-          for (const [k, v] of Object.entries(CATEGORY_MAP)) {
-            if (parentText.includes(k)) return v;
+        // Get title from the corresponding tab title element
+        const titleEl = $panel
+          .closest('[class*="tab"], [class*="panel"]')
+          .find('[class*="tab-title"], [class*="panel-title"], [class*="tab-label"], .elementor-tab-title, .vc_tta-title-text')
+          .first();
+        const titleText = titleEl.text().trim() || $panel.attr('data-title') || '';
+
+        const cat = normCategory(titleText);
+        const lic = normLicense(titleText);
+
+        if (!cat && !lic) return; // tab not relevant
+
+        // Within the panel, look for license/category sub-headings and tables
+        let currentLic = lic || 'D';
+        let currentCat = cat || 'road';
+
+        $panel.children().each((_, child) => {
+          const tag  = child.tagName?.toLowerCase() || '';
+          const text = $(child).text().trim();
+
+          if (/^h[1-6]$/.test(tag)) {
+            currentLic = normLicense(text) || currentLic;
+            currentCat = normCategory(text) || currentCat;
+            return;
           }
-        }
-        return 'road';
-      })();
 
-      const $container = $(el).closest('div, article, section, li');
-      const weeks = extractWeeks($container);
-
-      if (weeks.length > 0) {
-        series.push({ name: text, category, license: '?', car: '', weeks });
-      }
+          if (tag === 'table') {
+            $(child).find('tr').slice(1).each((_, tr) => {
+              const $c  = $(tr).find('td');
+              const name = $($c[0]).text().trim();
+              if (!name || name.length < 3) return;
+              const weeks = extractWeeks($(tr));
+              series.push({ name, car: $($c[1])?.text().trim() || '', fixed: false, license: currentLic, category: currentCat, weeks });
+            });
+          }
+        });
+      });
+      if (series.length >= 5) break;
     }
-  });
 
-  if (series.length) {
-    console.log(`[scraper] Strategy 4 found ${series.length} series`);
-    return series;
-  }
-
-  // ─────────────────────────────────────────
-  // STRATEGY 5 · Embedded JSON in <script> tags
-  // (Next.js, Nuxt, Gatsby, custom SPAs)
-  // ─────────────────────────────────────────
-  const jsonPatterns = [
-    /window\.__(?:STATE|DATA|APP|INITIAL_STATE|NEXT_DATA)__\s*=\s*({[\s\S]+?});/,
-    /__NEXT_DATA__['"]\s*type=['"]application\/json['"][^>]*>({[\s\S]+?})</,
-    /var\s+(?:series|calendar|schedule|data)\s*=\s*(\[[\s\S]+?\]);/,
-  ];
-
-  let embeddedData = null;
-  $('script:not([src])').each((_, el) => {
-    if (embeddedData) return;
-    const src = $(el).html() || '';
-    for (const pat of jsonPatterns) {
-      const m = src.match(pat);
-      if (m) {
-        try { embeddedData = JSON.parse(m[1]); break; } catch { /* skip */ }
-      }
-    }
-  });
-
-  if (embeddedData) {
-    console.log('[scraper] Strategy 5: found embedded JSON, attempting normalisation');
-    const raw = embeddedData?.props?.pageProps ?? embeddedData;
-    // Try to walk common keys that might hold series data
-    for (const key of ['series', 'schedule', 'calendar', 'data', 'items']) {
-      const arr = raw?.[key];
-      if (Array.isArray(arr) && arr.length) {
-        console.log(`[scraper] Strategy 5: key "${key}" has ${arr.length} items`);
-        return arr; // caller normalises
-      }
+    if (series.length >= 5) {
+      console.log(`[scraper] Strategy D (Elementor/WPBakery tabs) → ${series.length} series`);
+      return series;
     }
   }
 
-  console.warn('[scraper] All strategies failed — no series data extracted');
+  // ── STRATEGY E: Any table that looks like a schedule ─────────────────────
+  // Last resort: harvest any table that has ≥ 4 columns and ≥ 5 rows.
+  // Infer category/license from nearest heading ancestor.
+  {
+    const series = [];
+    $('table').each((_, tbl) => {
+      const $rows = $(tbl).find('tr');
+      if ($rows.length < 5) return;
+
+      const maxCols = Math.max(...$rows.map((_, r) => $(r).find('td,th').length).get());
+      if (maxCols < 4) return;
+
+      // Nearest heading context
+      let nearestHeading = $(tbl).closest('section, div, article').find('h1,h2,h3,h4').first().text().trim();
+      if (!nearestHeading) nearestHeading = $(tbl).prevAll('h1,h2,h3,h4').first().text().trim();
+
+      const cat = normCategory(nearestHeading) || 'road';
+      const lic = normLicense(nearestHeading) || 'D';
+
+      $rows.slice(1).each((_, tr) => {
+        const $c   = $(tr).find('td');
+        const name = $($c[0]).text().trim();
+        if (!name || name.length < 3 || name.length > 100) return;
+        const weeks = extractWeeks($(tr));
+        if (!weeks.length) return;
+        series.push({ name, car: $($c[1])?.text().trim() || '', fixed: false, license: lic, category: cat, weeks });
+      });
+    });
+
+    if (series.length >= 3) {
+      console.log(`[scraper] Strategy E (any schedule table) → ${series.length} series`);
+      return series;
+    }
+  }
+
+  console.warn('[scraper] All strategies exhausted — no series found in HTML');
   return [];
 }
 
 // ============================================
-// MAIN SCRAPE FUNCTION
+// BUILD STRUCTURED CALENDAR  (schema v2)
+// Converts flat series array → { road:{rookie:[],…}, oval:{…}, … }
+// ============================================
+function buildStructuredCalendar(flatSeries) {
+  const out = emptyCalendar();
+
+  for (const s of flatSeries) {
+    const cat = s.category || 'road';
+    const lic = s.license  || 'D';
+
+    if (!out[cat])      { console.warn(`[scraper] Unknown category: ${cat}`); continue; }
+    if (!out[cat][lic]) out[cat][lic] = [];
+
+    // Enrich weeks with season dates
+    const weeks = (s.weeks || []).map(w => {
+      const wMeta = SEASON_WEEKS.find(sw => sw.week === w.week) || {};
+      return { week: w.week, track: w.track, date: wMeta.start || null };
+    });
+
+    out[cat][lic].push({
+      name:     s.name,
+      car:      s.car      || '',
+      fixed:    s.fixed    || false,
+      license:  s.rawLic   || lic,
+      category: cat,
+      weeks,
+    });
+  }
+
+  return out;
+}
+
+// ============================================
+// LIVE SCRAPE
 // ============================================
 export async function scrapeCalendar() {
-  if (!(await isAllowed(TARGET_URL))) {
-    console.warn('[scraper] robots.txt disallows scraping target URL');
+  if (!await isAllowed(TARGET_URL)) {
+    console.warn('[scraper] robots.txt blocks target — using static fallback');
     return null;
   }
 
   const res = await browserFetch(TARGET_URL);
-  if (!res) return null;
-
-  if (res.status === 403) {
-    console.warn('[scraper] 403 Forbidden — site may require Cloudflare bypass or cookie.');
-    return null;
-  }
-  if (!res.ok) {
-    console.warn(`[scraper] Non-OK status: ${res.status}`);
+  if (!res || !res.ok) {
+    console.warn(`[scraper] fetch failed (${res?.status ?? 'no response'})`);
     return null;
   }
 
-  const html   = await res.text();
-  const series = parseHtml(html);
-
-  if (!series.length) return null;
-
-  // Enrich with week dates from SEASON_WEEKS
-  for (const s of series) {
-    for (const w of (s.weeks || [])) {
-      const sw = SEASON_WEEKS.find(x => x.week === w.week);
-      if (sw) { w.date = sw.start; }
-    }
-    // Fill missing weeks as "TBD" so every series has 13 entries
-    const existing = new Set((s.weeks || []).map(w => w.week));
-    for (const sw of SEASON_WEEKS) {
-      if (!existing.has(sw.week)) {
-        s.weeks.push({ week: sw.week, date: sw.start, track: 'TBD' });
-      }
-    }
-    s.weeks.sort((a, b) => a.week - b.week);
+  const html = await res.text();
+  if (!html || html.length < 1000) {
+    console.warn('[scraper] Response too short, likely a captcha/block page');
+    return null;
   }
 
-  return buildStructuredCalendar(series);
+  const flatSeries = parseHtml(html);
+  if (!flatSeries.length) {
+    console.warn('[scraper] Parser returned 0 series — using static fallback');
+    return null;
+  }
+
+  const calendar = buildStructuredCalendar(flatSeries);
+  const total    = Object.values(calendar)
+    .flatMap(byLic => Object.values(byLic))
+    .reduce((n, arr) => n + arr.length, 0);
+
+  console.log(`[scraper] Live scrape OK — ${total} series across ${Object.keys(calendar).length} categories`);
+  return calendar;
 }
 
 // ============================================
-// BUILD STRUCTURED CALENDAR
-// Returns the same shape as calendar.json so the
-// rest of the codebase works without changes.
+// PUBLIC API — getCalendarData()
+// Returns { data, source }
+// data is the schema-v2 object: { road, oval, dirt_road, dirt_oval, unranked }
 // ============================================
-function buildStructuredCalendar(seriesArray) {
-  const categories = {};
-  for (const s of seriesArray) {
-    // Re-classify using the keyword engine (overrides whatever the HTML said)
-    const cat = classifySeries(s.name, s.car || '');
-    const lic = s.license  || 'R';
-    if (!categories[cat]) categories[cat] = { R: [], D: [], C: [], B: [], A: [], PRO: [], '?': [] };
-    if (!categories[cat][lic]) categories[cat][lic] = [];
-    categories[cat][lic].push({
-      name:           s.name,
-      fixed:          s.fixed || false,
-      car:            s.car   || '',
-      license_range:  s.license || '?',
-      race_frequency: s.race_frequency || '',
-      incidents:      s.incidents      || '',
-      weeks:          s.weeks || [],
-    });
+export async function getCalendarData() {
+  // Try live scrape first
+  try {
+    const live = await scrapeCalendar();
+    if (live) {
+      const total = Object.values(live).flatMap(v => Object.values(v)).reduce((n, a) => n + a.length, 0);
+      return {
+        data: {
+          meta: {
+            season:      'Season 2 • 2026',
+            generatedAt: new Date().toISOString(),
+            totalSeries: total,
+            source:      'live',
+            weeks:       SEASON_WEEKS,
+            schema:      'v2',
+          },
+          ...live,
+        },
+        source: 'live',
+      };
+    }
+  } catch (err) {
+    console.error('[scraper] Live scrape threw:', err.message);
   }
 
-  return {
-    meta: {
-      season:      'Season 2 · 2026',
-      generatedAt: new Date().toISOString(),
-      source:      'iracing.es',
-      totalSeries: seriesArray.length,
-      weeks:       SEASON_WEEKS,
-    },
-    series: categories,
-  };
+  // Static fallback
+  const staticData = loadStatic(STATIC_CALENDAR);
+  if (!staticData) return { data: null, source: null };
+  console.log('[scraper] Using static fallback');
+  return { data: staticData, source: 'static' };
 }
 
 // ============================================
-// CURRENT WEEK HELPER
+// HELPERS used by server.js
 // ============================================
+
+export function getSeasonWeeks() { return SEASON_WEEKS; }
+
 export function getCurrentWeek() {
   const today = new Date();
   for (const w of SEASON_WEEKS) {
     const s = new Date(w.start);
-    const e = new Date(w.end); e.setHours(23, 59, 59);
+    const e = new Date(w.end);
+    e.setHours(23, 59, 59);
     if (today >= s && today <= e) return w.week;
   }
-  return null; // off-season
+  return null;
 }
 
-export function getSeasonWeeks() { return SEASON_WEEKS; }
-
-// ============================================
-// GETTERS (used by server.js)
-// All accept an already-loaded calendarData object
-// to avoid repeated disk reads.
-// ============================================
-
-/** All series, flat array with category/license metadata */
-export function getAllSeries(calendarData) {
-  if (!calendarData?.series) return [];
+// Flat array of all series (for /api/series)
+export function getAllSeries(data) {
   const result = [];
-  let id = 0;
-  for (const [category, byLicense] of Object.entries(calendarData.series)) {
-    for (const [license, list] of Object.entries(byLicense)) {
+  for (const [cat, byLic] of Object.entries(data)) {
+    if (cat === 'meta') continue;
+    for (const [lic, list] of Object.entries(byLic)) {
       for (const s of list) {
-        result.push({ id: String(id++), ...s, category, license });
+        result.push({ ...s, category: cat, license: lic === 'rookie' ? 'R' : lic });
       }
     }
   }
   return result;
 }
 
-/** Series filtered by category slug */
-export function getSeriesByCategory(calendarData, categorySlug) {
-  const CAT_KEYS = {
-    road:       'road',
-    oval:       'oval',
-    'dirt-road': 'dirt-road',
-    'dirt-oval': 'dirt-oval',
-    unranked:   'unranked',
-    // Also accept static-data names
-    'OVAL':       'oval',
-    'SPORTS CAR': 'road',
-    'FORMULA CAR':'road',
-    'DIRT OVAL':  'dirt-oval',
-    'DIRT ROAD':  'dirt-road',
-    'UNRANKED':   'unranked',
-  };
-  const target = CAT_KEYS[categorySlug] || categorySlug;
-  const byLicense = calendarData?.series?.[target] || calendarData?.series?.[categorySlug] || {};
-  const result = [];
-  let id = 0;
-  for (const [license, list] of Object.entries(byLicense)) {
-    for (const s of list) {
-      result.push({ id: String(id++), ...s, category: target, license });
-    }
-  }
-  return result;
+// Series for a specific category (road/oval/dirt_road/dirt_oval)
+export function getSeriesByCategory(data, category) {
+  // Accept dash variant too (dirt-road → dirt_road)
+  const key = (category || '').replace(/-/g, '_');
+  const byLic = data[key];
+  if (!byLic) return [];
+  return Object.entries(byLic).flatMap(([lic, list]) =>
+    list.map(s => ({ ...s, license: lic === 'rookie' ? 'R' : lic }))
+  );
 }
 
-/** All series that race in a given week */
-export function getSeriesForWeek(calendarData, weekNumber) {
-  const wn = parseInt(weekNumber, 10);
-  if (isNaN(wn)) return [];
-  const all = getAllSeries(calendarData);
-  return all
+// All series that run in a given week
+export function getSeriesForWeek(data, weekNum) {
+  return getAllSeries(data)
     .map(s => {
-      const week = (s.weeks || []).find(w => w.week === wn);
-      if (!week) return null;
-      return {
-        id:       s.id,
-        name:     s.name,
-        category: s.category,
-        license:  s.license,
-        car:      s.car || '',
-        track:    week.track,
-        date:     week.date   || '',
-        temp_c:   week.temp_c ?? null,
-        rain:     week.rain   || 'None',
-        duration: week.duration || '',
-        start_type: week.start_type || '',
-      };
+      const w = (s.weeks || []).find(x => x.week === weekNum);
+      if (!w) return null;
+      return { ...s, currentWeek: { ...w } };
     })
-    .filter(Boolean)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .filter(Boolean);
 }
 
-// ============================================
-// HIGH-LEVEL DATA ACCESSORS
-// ============================================
-
-/**
- * Returns calendar data.
- * Tries live scrape → static fallback.
- */
-export async function getCalendarData(forceRefresh = false) {
-  // Try live scrape
-  try {
-    const scraped = await scrapeCalendar();
-    if (scraped) {
-      console.log(`[scraper] Live scrape OK: ${scraped.meta.totalSeries} series`);
-      return { data: scraped, source: 'live' };
+// Unique tracks with configs
+export function getTracksData(data) {
+  const seen = new Set();
+  const tracks = [];
+  for (const s of getAllSeries(data)) {
+    for (const w of (s.weeks || [])) {
+      if (w.track && !seen.has(w.track)) {
+        seen.add(w.track);
+        tracks.push({ name: w.track });
+      }
     }
-  } catch (err) {
-    console.warn(`[scraper] Live scrape failed: ${err.message}`);
   }
-
-  // Fall back to static file
-  const staticData = loadStatic(STATIC_CALENDAR);
-  if (staticData) {
-    console.log('[scraper] Using static calendar.json fallback');
-    return { data: staticData, source: 'static' };
-  }
-
-  return { data: null, source: 'none' };
+  return tracks;
 }
 
 // ============================================
-// SPECIAL EVENTS SCRAPER — iracing.com/special-events/
+// SPECIAL EVENTS  (iracing.com/special-events/)
 // ============================================
-export async function scrapeSpecialEventsPage() {
-  const url = 'https://www.iracing.com/special-events/';
-  console.log('[scraper] Scraping special events from iracing.com …');
+const SPECIAL_EVENTS_URL = 'https://www.iracing.com/special-events/';
 
-  if (!(await isAllowed(url))) {
-    console.warn('[scraper] robots.txt blocks iracing.com/special-events/');
-    return null;
-  }
+function parseEventDate(raw) {
+  if (!raw) return null;
+  const cleaned = raw.replace(/(\d+)(st|nd|rd|th)/gi, '$1').trim();
+  const d = new Date(cleaned);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
 
-  const res = await browserFetch(url);
+async function scrapeSpecialEventsPage() {
+  if (!await isAllowed(SPECIAL_EVENTS_URL)) return null;
+
+  const res = await browserFetch(SPECIAL_EVENTS_URL);
   if (!res?.ok) return null;
 
   const html = await res.text();
   const $    = ch.load(html);
   const events = [];
+  const now    = new Date();
 
-  // ── Strategy A: event cards / articles ──
-  const cardSels = [
-    '[class*="event-card"]', '[class*="special-event"]',
-    'article[class*="event"]', '.wp-block-group',
-    '[class*="race-card"]', '[class*="event-item"]',
-  ];
+  // Strategy 1: event cards
+  $('[class*="event-card"], [class*="event-item"], [class*="special-event"], article').each((_, el) => {
+    const $el  = $(el);
+    const name = $el.find('h1,h2,h3,h4,[class*="title"]').first().text().trim();
+    if (!name || name.length < 3) return;
 
-  for (const sel of cardSels) {
-    $(sel).each((_, el) => {
-      const $el  = $(el);
-      const name = $el.find('h1,h2,h3,h4,[class*="title"],[class*="name"]').first().text().trim();
-      if (!name || name.length < 4) return;
+    const rawDate  = $el.find('[class*="date"],[datetime],[class*="time"]').first().text().trim();
+    const date     = parseEventDate(rawDate);
+    const circuit  = $el.find('[class*="track"],[class*="circuit"],[class*="venue"]').first().text().trim();
+    const url      = $el.find('a').first().attr('href') || SPECIAL_EVENTS_URL;
 
-      // Date — look for <time> or text matching date patterns
-      let dateRaw = $el.find('time').attr('datetime') || $el.find('time').text().trim();
-      if (!dateRaw) {
-        $el.find('[class*="date"],[class*="fecha"],[class*="when"]').each((_, d) => {
-          if (!dateRaw) dateRaw = $(d).text().trim();
-        });
-      }
-
-      const circuit = $el.find('[class*="track"],[class*="circuit"],[class*="circuito"],[class*="venue"]').first().text().trim() ||
-                      $el.find('p').filter((_, p) => /km|turns|circuit|speedway/i.test($(p).text())).first().text().trim();
-
-      const cars = $el.find('[class*="car"],[class*="vehicle"],[class*="class"]')
-                      .map((_, c) => $(c).text().trim()).get().filter(Boolean).join(', ');
-
-      const imgSrc = $el.find('img').first().attr('src') || $el.find('img').first().attr('data-src') || '';
-      const link   = $el.find('a').first().attr('href') || url;
-
-      if (name) {
-        const startDate = dateRaw ? parseEventDate(dateRaw) : null;
-        events.push({
-          id:           `live-${events.length + 1}`,
-          name,
-          date:         startDate?.toISOString() || dateRaw || null,
-          circuit:      circuit || '',
-          cars:         cars ? cars.split(/[,/]/).map(c => c.trim()).filter(Boolean) : [],
-          image:        imgSrc.startsWith('http') ? imgSrc : (imgSrc ? `https://www.iracing.com${imgSrc}` : null),
-          officialUrl:  link.startsWith('http') ? link : `https://www.iracing.com${link}`,
-          past:         startDate ? startDate < new Date() : false,
-          source:       'live',
-        });
-      }
+    events.push({
+      id:          name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      name,
+      date:        date || new Date(now.getTime() + 30 * 86400000).toISOString(),
+      circuit:     circuit || 'TBD',
+      officialUrl: url.startsWith('http') ? url : `https://www.iracing.com${url}`,
+      past:        date ? new Date(date) < now : false,
     });
-    if (events.length) break;
-  }
-
-  // ── Strategy B: table rows ──
-  if (!events.length) {
-    $('table tbody tr').each((_, row) => {
-      const $cells = $(row).find('td');
-      if ($cells.length < 2) return;
-      const name = $($cells[0]).text().trim();
-      if (!name || name.length < 4) return;
-      const dateRaw = $($cells[1]).text().trim();
-      const startDate = parseEventDate(dateRaw);
-      events.push({
-        id:           `live-${events.length + 1}`,
-        name,
-        date:         startDate?.toISOString() || dateRaw,
-        circuit:      $($cells[2])?.text().trim() || '',
-        cars:         [],
-        image:        null,
-        officialUrl:  url,
-        past:         startDate ? startDate < new Date() : false,
-        source:       'live',
-      });
-    });
-  }
-
-  if (!events.length) {
-    console.warn('[scraper] No special events found on iracing.com');
-    return null;
-  }
-
-  // Sort: upcoming first, then past
-  events.sort((a, b) => {
-    if (a.past !== b.past) return a.past ? 1 : -1;
-    return new Date(a.date || 0) - new Date(b.date || 0);
   });
 
-  console.log(`[scraper] Found ${events.length} special events from iracing.com`);
-  return events;
-}
-
-/** Parse a human-readable date string into a Date object (best-effort). */
-function parseEventDate(raw) {
-  if (!raw) return null;
-  // Already ISO
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return new Date(raw);
-  // "January 25, 2026"
-  const d = new Date(raw);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-/** Returns special events: tries live scrape, merges with static events.json. */
-export async function getEventsData() {
-  const staticEvents = loadStatic(STATIC_EVENTS);
-  const base         = staticEvents?.events || [];
-
-  // Attempt live scrape (best-effort — don't block on failure)
-  let liveEvents = null;
-  try {
-    liveEvents = await scrapeSpecialEventsPage();
-  } catch (err) {
-    console.warn(`[scraper] Special events scrape error: ${err.message}`);
+  if (events.length >= 2) {
+    console.log(`[scraper] Special events live: ${events.length}`);
+    return events.sort((a, b) => Number(a.past) - Number(b.past));
   }
+  return null;
+}
 
-  if (!liveEvents?.length) {
-    // Only static: add past flag based on current time
+export async function getEventsData() {
+  const staticData = loadStatic(STATIC_EVENTS);
+  const base = staticData?.events || [];
+
+  let live = null;
+  try { live = await scrapeSpecialEventsPage(); } catch { /* fallback */ }
+
+  if (!live?.length) {
     const now = new Date();
     return {
-      events: base.map(e => ({ ...e, past: e.endDate ? new Date(e.endDate) < now : new Date(e.date) < now })),
+      events: base.map(e => ({ ...e, past: e.endDate ? new Date(e.endDate) < now : new Date(e.date) < now }))
+                  .sort((a, b) => Number(a.past) - Number(b.past)),
       source: 'static',
     };
   }
 
-  // Merge: live events take priority; keep static ones that aren't in the live set
-  const liveNames = new Set(liveEvents.map(e => e.name.toLowerCase()));
-  const staticOnly = base.filter(e => !liveNames.has(e.name.toLowerCase())).map(e => {
+  // Merge: live events first, then static-only ones not in live
+  const liveIds = new Set(live.map(e => e.id));
+  const staticOnly = base.filter(e => !liveIds.has(e.id)).map(e => {
     const now = new Date();
     return { ...e, past: e.endDate ? new Date(e.endDate) < now : new Date(e.date) < now };
   });
 
-  const merged = [...liveEvents, ...staticOnly]
-    .sort((a, b) => (a.past === b.past ? 0 : a.past ? 1 : -1) || new Date(a.date) - new Date(b.date));
-
-  return { events: merged, source: 'live+static' };
-}
-
-/** Tracks list derived from calendar data */
-export function getTracksData(calendarData) {
-  const trackMap = new Map();
-  for (const [, byLic] of Object.entries(calendarData?.series || {})) {
-    for (const [, list] of Object.entries(byLic)) {
-      for (const s of list) {
-        for (const w of (s.weeks || [])) {
-          if (!w.track || w.track === 'TBD') continue;
-          const base = w.track.split(' - ')[0].trim();
-          const cfg  = w.track.includes(' - ') ? w.track.split(' - ').slice(1).join(' - ').trim() : 'Default';
-          if (!trackMap.has(base)) trackMap.set(base, { name: base, configs: new Set(), usedBy: [] });
-          trackMap.get(base).configs.add(cfg);
-          if (!trackMap.get(base).usedBy.includes(s.name)) trackMap.get(base).usedBy.push(s.name);
-        }
-      }
-    }
-  }
-  return [...trackMap.values()]
-    .map(t => ({ name: t.name, configs: [...t.configs], usedBy: t.usedBy }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    events: [...live, ...staticOnly].sort((a, b) => Number(a.past) - Number(b.past)),
+    source: 'live+static',
+  };
 }

@@ -95,10 +95,18 @@ app.get('/health', wrap(async (_req, res) => {
   });
 }));
 
+// ── GET /api/calendar ─────────────────────────
+// Full calendar data in schema v2 (road/oval/dirt_oval/dirt_road + rookie/D/C/B/A)
+app.get('/api/calendar', scrapeLimiter, wrap(async (_req, res) => {
+  const cal = await getCalendar();
+  if (!cal) return res.status(503).json({ error: 'Calendar data unavailable.' });
+  res.json(cal.data);
+}));
+
 // ── GET /api/series ───────────────────────────
 // All series, flat.
-// ?category=road|oval|dirt-road|dirt-oval
-// ?license=R|D|C|B|A
+// ?category=road|oval|dirt_road|dirt_oval
+// ?license=rookie|D|C|B|A
 // ?q=search+term
 app.get('/api/series', scrapeLimiter, wrap(async (req, res) => {
   const cal = await getCalendar();
@@ -253,7 +261,7 @@ app.get('/api/special-events', wrap(async (_req, res) => {
   const CACHE_KEY = 'special-events';
   let payload = cache.get(CACHE_KEY);
   if (!payload) {
-    const { events, source } = scraper.getEventsData();
+    const { events, source } = await scraper.getEventsData();
     payload = { meta: { total: events.length, source }, events };
     cache.set(CACHE_KEY, payload, CACHE_TTL);
   }
