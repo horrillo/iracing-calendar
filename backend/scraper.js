@@ -70,6 +70,53 @@ const LICENSE_MAP = {
 };
 
 // ============================================
+// SERIES CLASSIFIER
+// Determines category from series name + car name.
+// Evaluation order matters: more specific rules first.
+// ============================================
+export function classifySeries(name = '', car = '') {
+  const t = `${name} ${car}`.toLowerCase();
+
+  // ── DIRT OVAL ─────────────────────────────
+  // Sprint cars, midgets, dirt late models, dirt modifieds
+  if (/\b(sprint\s*car|wingless\s*sprint|dirt\s*sprint|410\b|360\s*sprint|305\s*sprint|super\s*600|midget|micro\s*sprint|dirt\s*late\s*model|late\s*model.*dirt|limited\s*late.*dirt|dirt.*modif|modif.*dirt|dirt.*street\s*stock|street\s*stock.*dirt|eldora|knoxville|williams\s*grove|volusia|ucr\s*sprint|usac|hav-a-tampa)\b/.test(t)) {
+    return 'dirt-oval';
+  }
+
+  // ── DIRT ROAD ─────────────────────────────
+  // Rallycross, off-road, Pro 2/4, lites
+  if (/\b(rallycross|rally\s*cross|off.?road|pro\s*[24]\b|pro-[24]\b|pro2|pro4|lite\s*truck|lites\b|extreme\s*dirt|rallycars|crosskart)\b/.test(t)) {
+    return 'dirt-road';
+  }
+
+  // ── OVAL ──────────────────────────────────
+  // NASCAR, ARCA, oval IndyCar, Super Late Models, Legends, etc.
+  if (/\b(nascar|cup\s*series|xfinity|craftsman\s*truck|arca|super\s*late\s*model|late\s*model\b(?!.*dirt)|legends\s*car|legends\s*oval|street\s*stock\b(?!.*dirt)|mini\s*stock|strictly\s*stock|sk\s*mod|thunder\s*car|sportsman\b|pro\s*series.*oval|asphalt.*late\s*model|modif.*asphalt|asphalt.*modif|stock\s*car|dirt\s*to\s*daytona)\b/.test(t)) {
+    return 'oval';
+  }
+  // IndyCar on ovals
+  if (/indycar/.test(t) && /oval/.test(t)) return 'oval';
+  // Generic oval keywords
+  if (/\b(superspeedway|short\s*track\b)\b/.test(t) && !/road|circuit|spa|lemans|daytona\s*road/.test(t)) {
+    return 'oval';
+  }
+
+  // ── ROAD (default) ────────────────────────
+  // GT3, GT4, GTE, LMP, GTP, Formula, Touring, production, open wheel…
+  return 'road';
+}
+
+// Also maps static calendar.json category names to slugs
+export const STATIC_CAT_TO_SLUG = {
+  'OVAL':       'oval',
+  'SPORTS CAR': 'road',
+  'FORMULA CAR':'road',
+  'DIRT OVAL':  'dirt-oval',
+  'DIRT ROAD':  'dirt-road',
+  'UNRANKED':   'unranked',
+};
+
+// ============================================
 // RATE LIMITER
 // ============================================
 let lastRequest = 0;
@@ -502,7 +549,8 @@ export async function scrapeCalendar() {
 function buildStructuredCalendar(seriesArray) {
   const categories = {};
   for (const s of seriesArray) {
-    const cat = s.category || 'road';
+    // Re-classify using the keyword engine (overrides whatever the HTML said)
+    const cat = classifySeries(s.name, s.car || '');
     const lic = s.license  || 'R';
     if (!categories[cat]) categories[cat] = { R: [], D: [], C: [], B: [], A: [], PRO: [], '?': [] };
     if (!categories[cat][lic]) categories[cat][lic] = [];
@@ -650,13 +698,154 @@ export async function getCalendarData(forceRefresh = false) {
   return { data: null, source: 'none' };
 }
 
-/** Returns special events data (always from static file). */
-export function getEventsData() {
-  const events = loadStatic(STATIC_EVENTS);
-  return {
-    events: events?.events || [],
-    source: 'static',
-  };
+// ============================================
+// SPECIAL EVENTS SCRAPER — iracing.com/special-events/
+// ============================================
+export async function scrapeSpecialEventsPage() {
+  const url = 'https://www.iracing.com/special-events/';
+  console.log('[scraper] Scraping special events from iracing.com …');
+
+  if (!(await isAllowed(url))) {
+    console.warn('[scraper] robots.txt blocks iracing.com/special-events/');
+    return null;
+  }
+
+  const res = await browserFetch(url);
+  if (!res?.ok) return null;
+
+  const html = await res.text();
+  const $    = ch.load(html);
+  const events = [];
+
+  // ── Strategy A: event cards / articles ──
+  const cardSels = [
+    '[class*="event-card"]', '[class*="special-event"]',
+    'article[class*="event"]', '.wp-block-group',
+    '[class*="race-card"]', '[class*="event-item"]',
+  ];
+
+  for (const sel of cardSels) {
+    $(sel).each((_, el) => {
+      const $el  = $(el);
+      const name = $el.find('h1,h2,h3,h4,[class*="title"],[class*="name"]').first().text().trim();
+      if (!name || name.length < 4) return;
+
+      // Date — look for <time> or text matching date patterns
+      let dateRaw = $el.find('time').attr('datetime') || $el.find('time').text().trim();
+      if (!dateRaw) {
+        $el.find('[class*="date"],[class*="fecha"],[class*="when"]').each((_, d) => {
+          if (!dateRaw) dateRaw = $(d).text().trim();
+        });
+      }
+
+      const circuit = $el.find('[class*="track"],[class*="circuit"],[class*="circuito"],[class*="venue"]').first().text().trim() ||
+                      $el.find('p').filter((_, p) => /km|turns|circuit|speedway/i.test($(p).text())).first().text().trim();
+
+      const cars = $el.find('[class*="car"],[class*="vehicle"],[class*="class"]')
+                      .map((_, c) => $(c).text().trim()).get().filter(Boolean).join(', ');
+
+      const imgSrc = $el.find('img').first().attr('src') || $el.find('img').first().attr('data-src') || '';
+      const link   = $el.find('a').first().attr('href') || url;
+
+      if (name) {
+        const startDate = dateRaw ? parseEventDate(dateRaw) : null;
+        events.push({
+          id:           `live-${events.length + 1}`,
+          name,
+          date:         startDate?.toISOString() || dateRaw || null,
+          circuit:      circuit || '',
+          cars:         cars ? cars.split(/[,/]/).map(c => c.trim()).filter(Boolean) : [],
+          image:        imgSrc.startsWith('http') ? imgSrc : (imgSrc ? `https://www.iracing.com${imgSrc}` : null),
+          officialUrl:  link.startsWith('http') ? link : `https://www.iracing.com${link}`,
+          past:         startDate ? startDate < new Date() : false,
+          source:       'live',
+        });
+      }
+    });
+    if (events.length) break;
+  }
+
+  // ── Strategy B: table rows ──
+  if (!events.length) {
+    $('table tbody tr').each((_, row) => {
+      const $cells = $(row).find('td');
+      if ($cells.length < 2) return;
+      const name = $($cells[0]).text().trim();
+      if (!name || name.length < 4) return;
+      const dateRaw = $($cells[1]).text().trim();
+      const startDate = parseEventDate(dateRaw);
+      events.push({
+        id:           `live-${events.length + 1}`,
+        name,
+        date:         startDate?.toISOString() || dateRaw,
+        circuit:      $($cells[2])?.text().trim() || '',
+        cars:         [],
+        image:        null,
+        officialUrl:  url,
+        past:         startDate ? startDate < new Date() : false,
+        source:       'live',
+      });
+    });
+  }
+
+  if (!events.length) {
+    console.warn('[scraper] No special events found on iracing.com');
+    return null;
+  }
+
+  // Sort: upcoming first, then past
+  events.sort((a, b) => {
+    if (a.past !== b.past) return a.past ? 1 : -1;
+    return new Date(a.date || 0) - new Date(b.date || 0);
+  });
+
+  console.log(`[scraper] Found ${events.length} special events from iracing.com`);
+  return events;
+}
+
+/** Parse a human-readable date string into a Date object (best-effort). */
+function parseEventDate(raw) {
+  if (!raw) return null;
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return new Date(raw);
+  // "January 25, 2026"
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Returns special events: tries live scrape, merges with static events.json. */
+export async function getEventsData() {
+  const staticEvents = loadStatic(STATIC_EVENTS);
+  const base         = staticEvents?.events || [];
+
+  // Attempt live scrape (best-effort — don't block on failure)
+  let liveEvents = null;
+  try {
+    liveEvents = await scrapeSpecialEventsPage();
+  } catch (err) {
+    console.warn(`[scraper] Special events scrape error: ${err.message}`);
+  }
+
+  if (!liveEvents?.length) {
+    // Only static: add past flag based on current time
+    const now = new Date();
+    return {
+      events: base.map(e => ({ ...e, past: e.endDate ? new Date(e.endDate) < now : new Date(e.date) < now })),
+      source: 'static',
+    };
+  }
+
+  // Merge: live events take priority; keep static ones that aren't in the live set
+  const liveNames = new Set(liveEvents.map(e => e.name.toLowerCase()));
+  const staticOnly = base.filter(e => !liveNames.has(e.name.toLowerCase())).map(e => {
+    const now = new Date();
+    return { ...e, past: e.endDate ? new Date(e.endDate) < now : new Date(e.date) < now };
+  });
+
+  const merged = [...liveEvents, ...staticOnly]
+    .sort((a, b) => (a.past === b.past ? 0 : a.past ? 1 : -1) || new Date(a.date) - new Date(b.date));
+
+  return { events: merged, source: 'live+static' };
 }
 
 /** Tracks list derived from calendar data */

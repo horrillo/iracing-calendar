@@ -148,6 +148,10 @@ const state = {
   pwaInstallEvent: null
 };
 
+// Registry for series objects referenced by planner buttons
+const _seriesRegistry = {};
+let   _seriesRegIdx   = 0;
+
 // ============================================
 // INIT
 // ============================================
@@ -398,8 +402,9 @@ function setupNavigation() {
       tab.classList.add('active');
       const cat = tab.dataset.category;
       state.activeCategory = cat;
-      if (cat === 'special') renderSpecialEvents();
-      else renderCategory(cat);
+      if (cat === 'special')      renderSpecialEvents();
+      else if (cat === 'planner') renderPlanner();
+      else                        renderCategory(cat);
     });
   });
 }
@@ -415,8 +420,9 @@ function setupFilters() {
 }
 
 function reRender() {
-  if (state.activeCategory === 'special') renderSpecialEvents();
-  else renderCategory(state.activeCategory);
+  if (state.activeCategory === 'special')      renderSpecialEvents();
+  else if (state.activeCategory === 'planner') renderPlanner();
+  else                                          renderCategory(state.activeCategory);
 }
 
 // ============================================
@@ -447,6 +453,10 @@ function renderCategory(categoryId) {
     return;
   }
 
+  // Reset series registry for this render pass
+  _seriesRegIdx = 0;
+  for (const k in _seriesRegistry) delete _seriesRegistry[k];
+
   let html = '';
   for (const lic of ['R', 'D', 'C', 'B', 'A']) {
     let list = catData[lic] || [];
@@ -464,7 +474,11 @@ function renderCategory(categoryId) {
           <button class="expand-btn" onclick="toggleAllInSection(this)">Expandir todo</button>
         </div>
         <div class="series-grid">
-          ${list.map(s => renderSeriesCard(s)).join('')}
+          ${list.map(s => {
+            const idx = _seriesRegIdx++;
+            _seriesRegistry[idx] = { ...s, license: s.license || lic, category: categoryId };
+            return renderSeriesCard(s, idx);
+          }).join('')}
         </div>
       </div>`;
   }
@@ -476,8 +490,11 @@ function renderCategory(categoryId) {
 // ============================================
 // SERIES CARD
 // ============================================
-function renderSeriesCard(series) {
+function renderSeriesCard(series, idx) {
   const fixedTag = series.fixed ? '<span class="series-tag">FIXED</span>' : '';
+  const planBtn  = (idx !== undefined)
+    ? `<button class="add-to-plan-btn" onclick="event.stopPropagation();_openPlannerForSeries(${idx})">➕ Plan</button>`
+    : '';
 
   let infoHtml = '<div class="series-info">';
   if (series.car)            infoHtml += `<div class="info-row"><span class="info-icon">🚗</span><span class="info-label">Coche:</span>&nbsp;<span class="info-value">${series.car}</span></div>`;
@@ -511,6 +528,7 @@ function renderSeriesCard(series) {
       <div class="series-header" onclick="toggleSeries(this)">
         <span class="series-name">${series.name}</span>
         ${fixedTag}
+        ${planBtn}
         <div class="series-toggle">▼</div>
       </div>
       <div class="weeks-container">
@@ -837,4 +855,420 @@ function setupPWAInstall() {
   });
 
   dismissBtn?.addEventListener('click', () => prompt.classList.add('hidden'));
+}
+
+// ============================================
+// RACE PLANNER — duration estimator
+// ============================================
+function estimateDurationMinutes(series) {
+  const t = `${series.name || ''} ${series.car || ''}`.toLowerCase();
+  const cat = series.category || '';
+
+  if (/24\s*h(our)?s?|daytona\s*24/.test(t))       return 1440;
+  if (/12\s*h(our)?s?/.test(t))                     return 720;
+  if (/\b6\s*h(our)?s?\b/.test(t))                  return 360;
+  if (/\b3\s*h(our)?s?\b/.test(t))                  return 180;
+  if (/\b2\s*h(our)?s?\b/.test(t))                  return 120;
+  if (/endur|endu\b/.test(t))                        return 120;
+  if (/team\s*race|team\s*series/.test(t))           return 90;
+  if (/sprint/.test(t))                              return 20;
+  if (/fun\b/.test(t))                               return 25;
+  if (cat === 'oval' || /nascar|cup\s*series|xfinity|craftsman/.test(t)) return 50;
+  if (cat === 'dirt-oval')                           return 35;
+  return 45;
+}
+
+function formatDuration(minutes) {
+  if (minutes >= 60) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${minutes} min`;
+}
+
+function calcEndTime(startTime, durationMinutes) {
+  const [h, m] = startTime.split(':').map(Number);
+  const total  = h * 60 + m + durationMinutes;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function formatShortDate(isoDate) {
+  if (!isoDate) return '';
+  return new Date(isoDate + 'T12:00:00Z').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+}
+
+// ============================================
+// RACE PLANNER — localStorage persistence
+// ============================================
+const PLANNER_KEY = 'iracing-planner';
+
+function loadPlannerState() {
+  try {
+    const raw = localStorage.getItem(PLANNER_KEY);
+    return raw ? JSON.parse(raw) : { entries: [] };
+  } catch { return { entries: [] }; }
+}
+
+function savePlannerState(plan) {
+  localStorage.setItem(PLANNER_KEY, JSON.stringify(plan));
+}
+
+// ============================================
+// RACE PLANNER — series registry helpers
+// ============================================
+function _openPlannerForSeries(idx) {
+  const series = _seriesRegistry[idx];
+  if (!series) return;
+  const weekData = (series.weeks || []).find(w => w.week === state.currentWeek)
+               || (series.weeks || [])[0];
+  openPlannerModal(series, state.currentWeek, weekData?.track || '—');
+}
+
+// ============================================
+// RACE PLANNER — modal
+// ============================================
+function openPlannerModal(series, weekNum, track) {
+  const duration = estimateDurationMinutes(series);
+
+  let overlay = document.getElementById('plannerModal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id        = 'plannerModal';
+    overlay.className = 'planner-modal-overlay hidden';
+    overlay.innerHTML = `
+      <div class="planner-modal" role="dialog" aria-modal="true" aria-labelledby="plannerModalTitle">
+        <p class="modal-title" id="plannerModalTitle">🏁 Añadir al Plan</p>
+        <p class="modal-series-name" id="plannerModalSeriesName"></p>
+        <div class="modal-field">
+          <label class="modal-label" for="plannerWeekSel">Semana</label>
+          <select class="modal-input" id="plannerWeekSel" style="font-size:14px">
+            ${SEASON_WEEKS.map(w =>
+              `<option value="${w.week}">${w.week} — ${formatShortDate(w.start)} · ${formatShortDate(w.end)}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label" for="plannerTimeInput">Hora de inicio</label>
+          <input class="modal-input" id="plannerTimeInput" type="time" step="300">
+        </div>
+        <div class="modal-field">
+          <label class="modal-label" for="plannerDurInput">Duración estimada (minutos)</label>
+          <input class="modal-input" id="plannerDurInput" type="number" min="5" max="1440" step="5">
+          <p class="modal-hint" id="plannerDurHint"></p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-primary" id="plannerModalConfirm">➕ Añadir a mi parrilla</button>
+          <button class="btn-secondary" id="plannerModalCancel">Cancelar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById('plannerModalCancel')
+      .addEventListener('click', closePlannerModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closePlannerModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlannerModal(); });
+  }
+
+  // Populate fields
+  document.getElementById('plannerModalSeriesName').textContent = series.name;
+  const weekSel = document.getElementById('plannerWeekSel');
+  weekSel.value = weekNum;
+  document.getElementById('plannerTimeInput').value = '';
+  document.getElementById('plannerDurInput').value  = duration;
+  document.getElementById('plannerDurHint').textContent =
+    `Estimado automáticamente: ${formatDuration(duration)}`;
+
+  // Wire confirm button (clone to remove stale listeners)
+  const oldBtn = document.getElementById('plannerModalConfirm');
+  const newBtn = oldBtn.cloneNode(true);
+  oldBtn.replaceWith(newBtn);
+  newBtn.addEventListener('click', () => {
+    const time = document.getElementById('plannerTimeInput').value;
+    if (!time) {
+      document.getElementById('plannerTimeInput').focus();
+      showToast('⚠️ Hora requerida', 'Indica la hora de inicio de la carrera.');
+      return;
+    }
+    const selectedWeek = parseInt(document.getElementById('plannerWeekSel').value);
+    const dur = parseInt(document.getElementById('plannerDurInput').value) || duration;
+    addToPlanner(series, selectedWeek, track, time, dur);
+    closePlannerModal();
+  });
+
+  overlay.classList.remove('hidden');
+  setTimeout(() => document.getElementById('plannerTimeInput').focus(), 50);
+}
+
+function closePlannerModal() {
+  const overlay = document.getElementById('plannerModal');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+// ============================================
+// RACE PLANNER — CRUD
+// ============================================
+function addToPlanner(series, weekNum, track, startTime, durationMinutes) {
+  const plan = loadPlannerState();
+  const rawId = `${series.name}-w${weekNum}-${startTime}`.replace(/['"]/g, '').replace(/\s+/g, '-');
+  // Prevent duplicates
+  if (plan.entries.some(e => e.id === rawId)) {
+    showToast('Ya en parrilla', `${series.name} ya está planificado para la semana ${weekNum}.`);
+    return;
+  }
+  plan.entries.push({
+    id:                rawId,
+    seriesName:        series.name,
+    category:          series.category || '',
+    license:           series.license  || '',
+    weekNumber:        weekNum,
+    track:             track || '—',
+    startTime,
+    durationMinutes,
+    addedAt:           new Date().toISOString()
+  });
+  plan.entries.sort((a, b) => {
+    if (a.weekNumber !== b.weekNumber) return a.weekNumber - b.weekNumber;
+    return a.startTime.localeCompare(b.startTime);
+  });
+  savePlannerState(plan);
+  showToast('✅ Añadido', `${series.name} — semana ${weekNum} a las ${startTime}.`);
+  if (state.activeCategory === 'planner') renderPlanner();
+}
+
+function removeFromPlanner(entryId) {
+  const plan = loadPlannerState();
+  plan.entries = plan.entries.filter(e => e.id !== entryId);
+  savePlannerState(plan);
+  showToast('🗑️ Eliminado', 'Carrera eliminada del planificador.');
+  if (state.activeCategory === 'planner') renderPlanner();
+}
+
+function clearPlanner() {
+  if (!confirm('¿Seguro que quieres limpiar toda la parrilla?')) return;
+  savePlannerState({ entries: [] });
+  renderPlanner();
+}
+
+// ============================================
+// RACE PLANNER — conflict detection
+// ============================================
+function checkConflicts(entries) {
+  // Returns array of { a, b, gap } for each overlapping pair within same week
+  const sorted   = [...entries].sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const result   = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i];
+    const b = sorted[i + 1];
+    if (a.weekNumber !== b.weekNumber) continue;
+    const [ah, am] = a.startTime.split(':').map(Number);
+    const [bh, bm] = b.startTime.split(':').map(Number);
+    const aEnd = ah * 60 + am + (a.durationMinutes || 40);
+    const bStart = bh * 60 + bm;
+    const gap    = bStart - aEnd;
+    if (gap < 15) result.push({ a: a.id, b: b.id, gap });
+  }
+  return result;
+}
+
+// ============================================
+// RACE PLANNER — render
+// ============================================
+function renderPlanner() {
+  const main    = document.getElementById('mainContent');
+  const plan    = loadPlannerState();
+  const entries = plan.entries;
+
+  // Group by week
+  const byWeek = {};
+  for (const e of entries) {
+    if (!byWeek[e.weekNumber]) byWeek[e.weekNumber] = [];
+    byWeek[e.weekNumber].push(e);
+  }
+
+  let html = `
+    <div class="planner-panel">
+      <div class="planner-header-bar">
+        <div>
+          <div class="planner-title">🏁 Mi Parrilla</div>
+          <div class="planner-week-info">${entries.length} carrera${entries.length !== 1 ? 's' : ''} planificada${entries.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="planner-actions">
+          ${entries.length ? `
+            <button class="btn-secondary" onclick="exportPlannerToGCal()" title="Exportar todo a Google Calendar">📅 Exportar</button>
+            <button class="btn-secondary" onclick="clearPlanner()" title="Limpiar toda la parrilla">🗑️ Limpiar</button>
+          ` : ''}
+        </div>
+      </div>`;
+
+  if (!entries.length) {
+    html += `
+      <div class="planner-empty">
+        <div class="planner-empty-icon">🏎️</div>
+        <div class="planner-empty-title">Parrilla vacía</div>
+        <div class="planner-empty-hint">
+          Abre cualquier serie y pulsa <strong>➕ Plan</strong> para añadirla a tu parrilla personal.
+          Puedes planificar carreras de cualquier semana y detectar conflictos de horario automáticamente.
+        </div>
+      </div>`;
+  } else {
+    const weekNums = Object.keys(byWeek).map(Number).sort((a, b) => a - b);
+    for (const wn of weekNums) {
+      const wEntries   = byWeek[wn].sort((a, b) => a.startTime.localeCompare(b.startTime));
+      const weekMeta   = SEASON_WEEKS.find(w => w.week === wn);
+      const dateRange  = weekMeta
+        ? `${formatShortDate(weekMeta.start)} – ${formatShortDate(weekMeta.end)}`
+        : '';
+      const wConflicts = checkConflicts(wEntries);
+      const wConflictIds = new Set(wConflicts.flatMap(c => [c.a, c.b]));
+
+      html += `
+        <div class="planner-week-section">
+          <div class="planner-week-header">
+            <span class="planner-week-num">Semana ${wn}</span>
+            ${dateRange ? `<span class="planner-week-date">${dateRange}</span>` : ''}
+            ${wConflicts.length ? `<span class="planner-conflict-count">⚠️ ${wConflicts.length} conflicto${wConflicts.length > 1 ? 's' : ''}</span>` : ''}
+          </div>
+          ${renderPlannerTimeline(wEntries, wConflicts)}
+          <div class="planner-list">`;
+
+      for (const e of wEntries) {
+        html += renderPlannerEntry(e, wConflictIds.has(e.id));
+        const conflictAfter = wConflicts.find(c => c.a === e.id);
+        if (conflictAfter) {
+          const next    = wEntries.find(x => x.id === conflictAfter.b);
+          const gapText = conflictAfter.gap < 0
+            ? `Se solapan ${Math.abs(conflictAfter.gap)} min`
+            : `Solo ${conflictAfter.gap} min de margen`;
+          html += `
+            <div class="conflict-warning">
+              ⚠️ ${gapText} entre <strong>${e.seriesName}</strong> y <strong>${next?.seriesName || '…'}</strong>
+              — necesitas al menos 15 minutos entre carreras.
+            </div>`;
+        }
+      }
+
+      html += `  </div></div>`; // /planner-list /planner-week-section
+    }
+  }
+
+  html += '</div>'; // /planner-panel
+  main.innerHTML = html;
+}
+
+function renderPlannerTimeline(entries, conflicts) {
+  const conflictIds = new Set(conflicts.flatMap(c => [c.a, c.b]));
+  const TOTAL = 24 * 60;
+
+  let hourHtml = '';
+  for (let h = 0; h < 24; h++) {
+    const labeled = h % 3 === 0;
+    hourHtml += `<div class="timeline-hour-mark${labeled ? ' labeled' : ''}">${labeled ? String(h).padStart(2,'0') : ''}</div>`;
+  }
+
+  let entryHtml = '';
+  for (const e of entries) {
+    if (!e.startTime) continue;
+    const [h, m]  = e.startTime.split(':').map(Number);
+    const start   = h * 60 + m;
+    const dur     = e.durationMinutes || 40;
+    const left    = (start / TOTAL * 100).toFixed(2);
+    const width   = Math.max(dur / TOTAL * 100, 1.5).toFixed(2);
+    const label   = e.seriesName.split(' ').slice(0, 2).join(' ');
+    const isConf  = conflictIds.has(e.id);
+    const safeId  = e.id.replace(/[^a-z0-9_]/gi, '_');
+
+    entryHtml += `<div class="timeline-entry${isConf ? ' conflict' : ''}"
+      style="left:${left}%;width:${width}%"
+      title="${e.seriesName} — ${e.startTime} (~${formatDuration(dur)})"
+      onclick="highlightPlannerEntry('${safeId}')">${label}</div>`;
+  }
+
+  return `
+    <div class="planner-timeline">
+      <div class="timeline-hours">${hourHtml}</div>
+      <div class="timeline-entries">${entryHtml}</div>
+    </div>`;
+}
+
+function renderPlannerEntry(entry, hasConflict) {
+  const dur    = entry.durationMinutes || 40;
+  const endT   = calcEndTime(entry.startTime, dur);
+  const safeId = entry.id.replace(/[^a-z0-9_]/gi, '_');
+  const catIcon = {
+    oval: '🏟️', road: '🏁', 'dirt-oval': '🌾', 'dirt-road': '🌿', unranked: '🎮'
+  }[entry.category] || '🏎️';
+
+  return `
+    <div class="planner-entry${hasConflict ? ' has-conflict' : ''}" id="pe_${safeId}">
+      <div>
+        <div class="planner-entry-time">${entry.startTime}</div>
+        <div class="planner-entry-end">– ${endT}</div>
+      </div>
+      <div>
+        <div class="planner-entry-name">${catIcon} ${entry.seriesName}</div>
+        <div class="planner-entry-meta">
+          <span>📍 ${entry.track}</span>
+          ${entry.license ? `<span>Lic. ${entry.license}</span>` : ''}
+          <span class="planner-entry-duration">${formatDuration(dur)}</span>
+        </div>
+      </div>
+      <div class="planner-entry-actions">
+        <button class="planner-action-btn" onclick="addPlannerEntryToGCal('${entry.id}')" title="Añadir a Google Calendar">📅 GCal</button>
+        <button class="planner-action-btn danger" onclick="removeFromPlanner('${entry.id}')" title="Eliminar">🗑️ Borrar</button>
+      </div>
+    </div>`;
+}
+
+function highlightPlannerEntry(safeId) {
+  const el = document.getElementById(`pe_${safeId}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  el.style.outline = '2px solid var(--red)';
+  setTimeout(() => { el.style.outline = ''; }, 2200);
+}
+
+// ============================================
+// RACE PLANNER — Google Calendar export
+// ============================================
+function addPlannerEntryToGCal(entryId) {
+  const plan  = loadPlannerState();
+  const entry = plan.entries.find(e => e.id === entryId);
+  if (!entry) { showToast('Error', 'Carrera no encontrada.'); return; }
+
+  const wk = SEASON_WEEKS.find(w => w.week === entry.weekNumber);
+  if (!wk) { showToast('Error', 'Semana no reconocida.'); return; }
+
+  try {
+    const startISO = `${wk.start}T${entry.startTime}:00`;
+    const endISO   = new Date(new Date(startISO).getTime() + entry.durationMinutes * 60000).toISOString();
+    const fmt      = s => s.replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const title    = encodeURIComponent(`iRacing: ${entry.seriesName}`);
+    const desc     = encodeURIComponent(
+      `Semana ${entry.weekNumber}\nCircuito: ${entry.track}\nLicencia: ${entry.license || '—'}\nDuración estimada: ${formatDuration(entry.durationMinutes)}\n\nhttps://www.iracing.com/`
+    );
+    const loc = encodeURIComponent(entry.track);
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(startISO)}/${fmt(endISO)}&details=${desc}&location=${loc}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch { showToast('Error', 'No se pudo generar el enlace de Google Calendar.'); }
+}
+
+function exportPlannerToGCal() {
+  const plan = loadPlannerState();
+  if (!plan.entries.length) { showToast('Sin carreras', 'La parrilla está vacía.'); return; }
+
+  const now      = new Date();
+  const upcoming = plan.entries.filter(e => {
+    const wk = SEASON_WEEKS.find(w => w.week === e.weekNumber);
+    if (!wk) return false;
+    return new Date(`${wk.start}T${e.startTime}:00`) > now;
+  });
+
+  if (!upcoming.length) { showToast('Sin carreras futuras', 'Todas las carreras planificadas ya han pasado.'); return; }
+
+  const toExport = upcoming.slice(0, 5);
+  toExport.forEach(e => addPlannerEntryToGCal(e.id));
+  if (upcoming.length > 5) {
+    showToast('📅 Exportando', `Se abrieron las primeras 5 de ${upcoming.length} carreras.`);
+  }
 }

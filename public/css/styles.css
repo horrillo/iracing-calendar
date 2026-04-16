@@ -1296,3 +1296,363 @@ input.filter-input::placeholder { color: var(--text-dim); }
   .brand-name { font-size: 13px; letter-spacing: 1px; }
   input.filter-input { min-width: 120px; }
 }
+
+/* ============================================
+   16. RACE PLANNER
+   ============================================ */
+.planner-panel { padding: var(--space-md) 0; }
+
+.planner-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.planner-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-primary);
+}
+
+.planner-week-info { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+.planner-actions { display: flex; gap: var(--space-sm); }
+
+.planner-week-section { margin-bottom: var(--space-xl); }
+
+.planner-week-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 2px solid var(--border);
+}
+
+.planner-week-num {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-primary);
+}
+
+.planner-week-date { font-size: 12px; color: var(--text-muted); }
+
+.planner-conflict-count {
+  background: rgba(220,38,38,0.1);
+  color: var(--red-light);
+  font-family: var(--font-heading);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(220,38,38,0.3);
+  margin-left: auto;
+}
+
+/* Timeline strip */
+.planner-timeline {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-md);
+}
+
+.timeline-hours {
+  display: flex;
+  height: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline-hour-mark {
+  flex: 1;
+  text-align: center;
+  font-family: var(--font-heading);
+  font-size: 7px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-right: 1px solid rgba(255,255,255,0.04);
+  line-height: 18px;
+  overflow: hidden;
+}
+.timeline-hour-mark.labeled { color: var(--text-muted); }
+
+.timeline-entries { position: relative; height: 36px; }
+
+.timeline-entry {
+  position: absolute;
+  top: 4px;
+  height: 28px;
+  background: linear-gradient(135deg, var(--red), var(--orange));
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+  font-family: var(--font-heading);
+  font-size: 8px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 6px;
+  cursor: pointer;
+  transition: opacity var(--t-fast);
+  z-index: 2;
+}
+.timeline-entry:hover { opacity: 0.8; }
+.timeline-entry.conflict {
+  background: linear-gradient(135deg, #7f1d1d, #dc2626);
+  outline: 1px solid #fca5a5;
+}
+
+/* Planner entry list */
+.planner-list { display: flex; flex-direction: column; gap: var(--space-sm); }
+
+.planner-entry {
+  background: var(--bg-glass);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md) var(--space-lg);
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  align-items: center;
+  gap: var(--space-md);
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.planner-entry:hover { border-color: var(--border-hover); }
+.planner-entry.has-conflict {
+  border-color: rgba(220,38,38,0.45);
+  background: rgba(220,38,38,0.04);
+}
+
+.planner-entry-time {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--red);
+  text-align: center;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+.planner-entry-end {
+  font-family: var(--font-heading);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 2px;
+}
+
+.planner-entry-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+.planner-entry-meta {
+  display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.planner-entry-duration {
+  display: inline-block;
+  background: var(--orange-dim);
+  color: var(--orange);
+  border: 1px solid rgba(249,115,22,0.25);
+  font-family: var(--font-heading);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.planner-entry-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.planner-action-btn {
+  font-family: var(--font-heading);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  white-space: nowrap;
+}
+.planner-action-btn:hover { background: var(--bg-card); color: var(--text-primary); border-color: var(--border-hover); }
+.planner-action-btn.danger:hover { color: var(--red-light); border-color: rgba(220,38,38,0.4); }
+
+/* Conflict warning row */
+.conflict-warning {
+  background: rgba(220,38,38,0.08);
+  border: 1px solid rgba(220,38,38,0.35);
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: 12px;
+  color: var(--red-light);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 2px 0;
+}
+
+/* Add-to-planner button (inside series card header) */
+.add-to-plan-btn {
+  font-family: var(--font-heading);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(220,38,38,0.35);
+  background: var(--red-dim);
+  color: var(--red-light);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.add-to-plan-btn:hover {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+  box-shadow: 0 0 8px rgba(220,38,38,0.35);
+}
+
+/* Planner add modal */
+.planner-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.planner-modal-overlay.hidden { display: none; }
+
+.planner-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  max-width: 420px;
+  width: calc(100vw - 32px);
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.22s ease;
+}
+
+.modal-title {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.modal-series-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
+  margin-bottom: var(--space-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-field { margin-bottom: var(--space-md); }
+.modal-label {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+.modal-input {
+  width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 600;
+  padding: 9px var(--space-md);
+  transition: border-color var(--t-fast);
+  box-sizing: border-box;
+  -webkit-appearance: none;
+}
+.modal-input:focus { outline: none; border-color: var(--red); }
+.modal-hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+.modal-footer { display: flex; gap: var(--space-sm); margin-top: var(--space-lg); }
+
+/* Planner empty state */
+.planner-empty {
+  text-align: center;
+  padding: 60px var(--space-lg);
+}
+.planner-empty-icon { font-size: 52px; margin-bottom: var(--space-md); }
+.planner-empty-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-sm);
+}
+.planner-empty-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  max-width: 340px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+@media (max-width: 600px) {
+  .planner-entry { grid-template-columns: 58px 1fr; }
+  .planner-entry-actions { display: none; }
+  .planner-timeline { display: none; }
+}
