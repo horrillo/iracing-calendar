@@ -5,6 +5,13 @@
 'use strict';
 
 // ============================================
+// BACKEND CONFIG
+// Set BACKEND_URL to your Railway deployment.
+// Leave empty ('') to always use static files.
+// ============================================
+const BACKEND_URL = ''; // e.g. 'https://iracing-calendar-backend.up.railway.app'
+
+// ============================================
 // CONSTANTS
 // ============================================
 const LICENSE_NAMES = {
@@ -154,20 +161,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   showLoading();
 
-  const [calData, evData, alData] = await Promise.all([
-    fetchJSON('/data/calendar.json'),
-    fetchJSON('/data/events.json'),
-    fetchJSON('/data/avisos.json')
+  // Load data: backend first, static fallback
+  const [calResult, evResult, alData] = await Promise.all([
+    fetchWithFallback('/api/series',          '/data/calendar.json'),
+    fetchWithFallback('/api/special-events',  '/data/events.json'),
+    fetchJSON('/data/avisos.json')            // alerts are always local
   ]);
+
+  // The backend /api/series response wraps data in { meta, series, calendar }
+  // The static calendar.json uses { meta, series: { OVAL: {R:[...]}, ... } }
+  // Normalise both shapes into the same calendarData structure the app expects.
+  let calData = calResult.data;
+  if (calData && calData.calendar) {
+    // Backend shape: unwrap the nested calendar object
+    calData = calData.calendar;
+  }
+
+  // /api/special-events → { meta, events: [...] }
+  // static events.json  → { meta, events: [...] }
+  // Both are the same shape — pass through as-is.
+  let evData = evResult.data;
 
   state.calendarData = calData;
   state.eventsData   = evData;
   state.alertsData   = alData;
 
+  // Update season badge from meta
   if (calData) {
     const badge = document.getElementById('seasonBadge');
     if (badge) badge.textContent = calData.meta?.season || 'Season 2 • 2026';
   }
+
+  // Show data-source indicator
+  updateDataSourceBadge(calResult.source, calData?.meta);
 
   renderAlerts();
   setupNavigation();
@@ -187,6 +213,75 @@ async function fetchJSON(url) {
     if (!r.ok) return null;
     return await r.json();
   } catch { return null; }
+}
+
+// ============================================
+// DATA LAYER — backend with static fallback
+// ============================================
+
+/**
+ * Try the backend endpoint first; if it fails or BACKEND_URL is
+ * not configured, fetch the local static file instead.
+ * Returns { data, source: 'backend'|'static' }
+ */
+async function fetchWithFallback(backendPath, staticPath) {
+  if (BACKEND_URL) {
+    try {
+      const r = await fetch(`${BACKEND_URL}${backendPath}`, {
+        headers: { 'Accept': 'application/json' },
+        // 8-second timeout so a slow Railway cold-start doesn't hang the UI
+        signal: AbortSignal.timeout(8000)
+      });
+      if (r.ok) {
+        const data = await r.json();
+        return { data, source: 'backend' };
+      }
+    } catch (e) {
+      console.warn(`[app] backend ${backendPath} failed (${e.message}), using static fallback`);
+    }
+  }
+  const data = await fetchJSON(staticPath);
+  return { data, source: 'static' };
+}
+
+/**
+ * Show a small indicator in the filter bar with the data source
+ * and the timestamp from the backend (if available).
+ */
+function updateDataSourceBadge(source, meta) {
+  let badge = document.getElementById('dataSourceBadge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'dataSourceBadge';
+    badge.style.cssText = `
+      font-family: var(--font-heading);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-left: auto;
+      padding: 0 4px;
+    `;
+    const filterRow = document.querySelector('.filter-row');
+    if (filterRow) filterRow.appendChild(badge);
+  }
+
+  const isLive     = source === 'backend';
+  const dot        = isLive ? '🟢' : '⚪';
+  const label      = isLive ? 'Live' : 'Static';
+  const updatedAt  = meta?.cachedAt || meta?.generatedAt || null;
+  const timeStr    = updatedAt
+    ? new Date(updatedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  badge.innerHTML = `${dot} ${label}${timeStr ? ` · ${timeStr}` : ''}`;
+  badge.title     = isLive
+    ? `Datos en vivo del backend (caché: ${timeStr})`
+    : 'Usando datos estáticos (backend no disponible)';
 }
 
 function showLoading() {
